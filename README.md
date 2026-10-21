@@ -23,7 +23,7 @@ ZHIFEIJI AI 影视创作资源库：21 组影视创作 Skill 源文件 + 四个�
 
 ## 下载与克隆
 
-仓库本体约 30MB（不含演示视频），可直接克隆：
+仓库本体：git pack 约 53MB，解压后约 82MB（不含演示视频），可直接克隆：
 
 ```bash
 git clone https://github.com/RedNoFer/AI-Short-Drama-Automation.git
