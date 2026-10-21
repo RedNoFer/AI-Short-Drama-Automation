@@ -1,0 +1,389 @@
+{
+  "policy_version": 19,
+  "execution": {
+    "model": "isolated_stage_subagents",
+    "orchestrator_holds": [
+      "项目输入单",
+      "阶段检查单",
+      "执行账",
+      "规则传播登记表"
+    ],
+    "worker_scope": "handoff_paths_only",
+    "reviewer_separate_subtask": true,
+    "parallel_after_master_freeze": [
+      "stage3",
+      "stage4",
+      "stage5_review"
+    ],
+    "single_session_fallback": "fresh_context_per_stage_and_review"
+  },
+  "video": {
+    "default_duration_sec": 30,
+    "hard_cuts_min": 5,
+    "hard_cuts_max": 10,
+    "shots_band": "6-11（2026-10-19 用户调整：默认镜头带，全档通用；打斗A段一镜到底豁免，走拍点制）",
+    "integer_timecodes": true,
+    "prompt_max_chars": 3000,
+    "default_quality_tier": "tier2_xiaomo63",
+    "prompt_quality_tiers": {
+      "tier2_xiaomo63": {
+        "label": "第二档（默认）",
+        "prompt_max_chars": 3000,
+        "hard_cuts": "5-10（镜头6-11；小墨6.3本身不设每30秒切镜数，区间为工作流分段口径，按题材在带内选点）",
+        "storyboard_source": "分镜层按E24小墨Skill6.3重排并逐镜自查：固定镜头≤10%且禁连续固定（例外仅重锤凝固+留白长镜）、常态镜头以极缓慢推/横移/漂移替代绝对静止、常规镜头≤30%、侧45°为叙事主力、景别不连三近景、焦段≥4种、机位角度≥6种、台词重锤后接更松景别留白镜、逐镜标注景别/焦段/机位/运镜/景深；重排后再经S18适配器编译",
+        "review_recheck": "阶段4逐条评审与阶段5独立复核都必须按E24原版把分镜视感复读检查一遍，不合格回阶段3重排",
+        "defined": "2026-10-19 用户定义并设为默认"
+      },
+      "tier1_standard": {
+        "label": "第一档（紧凑，可选）",
+        "prompt_max_chars": 2000,
+        "hard_cuts": "5-7",
+        "storyboard_source": "分镜沿用既有逐镜表，按S18适配器编译纪律写提示词",
+        "note": "兼容旧交付包与接口更严时的紧凑路线；旧包按此档登记兼容豁免"
+      },
+      "tier3_full_xiaomo63": {
+        "label": "第三档（小墨满配试点，可选）",
+        "prompt_max_chars": 4500,
+        "target_chars": "3200-4300；上限不是配额，写不满不硬凑（防稀释铁律）",
+        "shots": "7-11（在全局6-11带内偏多镜端；A级一镜到底打斗段豁免镜数带，走拍点制）",
+        "hard_cuts": "6-10",
+        "storyboard_source": "小墨6.3满配密度：每镜五要素自包含（①空间与前景框架②光行为③表演三通道完整微表情链④镜头语言（景别/焦段/机位/运镜速度/景深）⑤声音设计），逐镜表同步满配字段（空间锚点名/光影/色调），经S18编译为自然语言整句",
+        "budget_rule": "字数提升只为演绎剧情质量，禁止废话：预算优先级＝表演与剧情演绎＞光影空间＞镜头语言＞声音设计；禁止形容词堆叠、同义反复、文学抒情填充、参考图已承载的身份/服装/场景结构描述；每镜必须含推进剧情的新信息或表演节拍，两镜信息重复即违规；每镜自包含（人物直呼其名、不依赖上镜代词、切点与台词前置）",
+        "review_addendum": "六视角不变，演绎密度审查并入表演视角：逐镜查『删掉此镜信息是否丢失』，无信息增量的镜头判违规",
+        "status": "规范已定义（2026-10-19 用户定义），内容重排未启动；全量采用前须样片对比证据（建议 E02-SH01/E10-SH07 双档对照），试点通过方可铺开",
+        "validator_note": "validate_compact_package.py 需补 --tier 参数后才可按本档机检（4500/7-11镜/硬切6-10）；当前机检按第二档口径"
+      }
+    },
+    "validator_note": "validate_compact_package.py 读 video.prompt_max_chars（第二档3000）与 hard_cuts_min/max（5-10，即镜头6-11）；片段标题含「一镜到底」走 fight 分支（拍点行、行内禁硬切、豁免硬切计数、字符上限取 tier3 4500）；--tier 按档参数待补"
+  },
+  "model_profiles": {
+    "seedance25": {
+      "label": "Seedance 2.5 轨（默认）",
+      "prompt_max_chars_source": "video.prompt_max_chars（分档2000/3000/4500）",
+      "time_granularity": "整数秒",
+      "duration": "固定30秒",
+      "spec_sources": "S18适配器＋小墨6.3＋打斗路由"
+    },
+    "wan30": {
+      "label": "Wan3.0 轨（新增）",
+      "prompt_max_chars": 20000,
+      "target_chars": "8000-15000（用户指令；有效动作密度优先，字数不是KPI）",
+      "time_granularity": "0.5秒",
+      "duration": "2-30秒弹性或智能时长",
+      "duration_min": 2,
+      "duration_max": 30,
+      "references": "≤10图＋≤5视频(总≤15s,动作/运镜/特效参考)＋≤5音频(音色+台词驱动+口型)＋文件/网页≤1；首尾帧与参考模式互斥；视频参考只用单张场景内剧照，四视图仅图片资产",
+      "dialect": "@Image/@Video/@Audio绑定；<音效>点标记；图锚条款（单张剧照）；镜头前置＋2–3可见动作节点；四段结构映射Wan三模块",
+      "editing": "整改分级：台词/光线/元素级走编辑指令修复，结构/剧情级回炉重生成",
+      "spec": "references/wan30-prompt-spec.md ＋ references/wan30-adapter-v1.0.md（编译器手册，与 S18 同构）＋ references/failure-cases.md#wan30-01（反例硬规则）",
+      "validator": "validate_compact_package.py --model wan30 已实现（字符20000/时长2-30s/0.5秒粒度）；反例专项审计 audit_wan30_antipatterns.py",
+      "anti_patterns": {
+        "video_reference": "single_cinematic_still_only",
+        "forbid_four_view_video_ref": true,
+        "camera_clause_max_pos_ratio": 0.3,
+        "still_shot_max_sec": 2.0,
+        "empty_shot_max_sec": 2.5,
+        "max_extreme_slow_terms": 0,
+        "forbidden_blocking_terms": [
+          "并肩",
+          "一字排开",
+          "并排站",
+          "排成一排"
+        ],
+        "blocking_scope": "仅拦三人以上人物物理群排；两人并肩、台词比喻、影子/倒影排列不拦",
+        "require_no_lens_gaze": true,
+        "min_action_nodes_per_beat": 2,
+        "max_dialogue_shot_sec": 6.0,
+        "forbid_legible_text_closeup": true,
+        "warm_light_terms": [
+          "清晨低角度",
+          "金色",
+          "暖金",
+          "日出",
+          "暖色逆光"
+        ],
+        "public_spec_max_ratio": 0.2,
+        "max_named_faces_per_shot": 3,
+        "max_five_person_shot_sec": 2.0,
+        "forbid_five_person_dialogue": true,
+        "reflection_requires_fantasy_tag": true
+      }
+    }
+  },
+  "fight_mode": {
+    "enabled": true,
+    "definition_source": "2026-10-19 用户定义：阶段3.5 打斗路由——识别到打斗镜头路由进打斗skill渲染优化并保证上下文衔接，非打斗跳过；画风统一、不引入水墨",
+    "levels": {
+      "A_full_fight": {
+        "detect": "存在完整攻防交换链（攻→格挡/闪避/拆招/反击≥2回合），或武器/肢体正面交锋贯穿全段",
+        "transition": "一镜到底（硬切0）",
+        "structure": "拍点制：拍点行连续覆盖0-30秒，行间以运镜/焦点过渡衔接，拍点即镜内节拍而非切镜",
+        "shot_band": "豁免6-11镜带",
+        "char_tier": "默认按第三档4500校验（一镜满配主要消费者）",
+        "segment_title_marker": "片段标题含「一镜到底」"
+      },
+      "B_mixed": {
+        "detect": "局部交锋（单次或少数几次攻防）嵌在对话/行进结构中",
+        "transition": "保留硬切",
+        "structure": "6-11镜不动；交锋镜用攻防五结果（命中/格挡/闪避/拆招/反击）＋受击反馈＋战损连续渲染，其余镜按原规范",
+        "char_tier": "按所在档"
+      },
+      "C_deterrence": {
+        "detect": "对峙、追逃、围而不攻、幻境压迫等无完整攻防交换",
+        "transition": "保留硬切",
+        "structure": "原工作流规范；可借环境战斗化写法与受击表现替换表（禁血：碳屑/霜屑/花瓣雾散）",
+        "note": "威慑对峙不是打斗（例：只围不攻的狼群段为C级）"
+      }
+    },
+    "priority_order": [
+      "用户当前明确要求",
+      "打斗战斗语法（388攻防五结果/受击反馈链/战损连续/攻击因果链/对手智能反制）",
+      "小墨6.3视感（一镜到底段的拍点同样遵守景别变化与运镜多样性）",
+      "节奏骨架（388十五镜/花128二十一拍仅作参考，拍点时长受整数秒与语速≤5字/秒约束）"
+    ],
+    "excluded_from_fight_skills": [
+      "388全局技术参数（8K/UE5/Rec.2020）——画风以本项目【公共总规范】为准",
+      "人物详细设定内联——身份由资产代码＋参考图承载",
+      "收尾两镜（胜负分晓/收武器）——收尾按剧情【收尾】衔接规则",
+      "水墨飞白与三级水墨碰撞帧——画风统一不引入水墨"
+    ],
+    "effect_motif_rule": "特效色彩对立改用剧内特效母题（银纹光轨/黑雾残缕/青灰江雾/母题色等），敌我各绑一色，攻防特效从母题生成",
+    "continuity": [
+      "入镜首拍承接上一片段【收尾】的站位/持物/战损状态",
+      "出镜末拍收在【收尾】描述状态，禁胜负定格抢剧情收尾",
+      "B级交锋镜出口状态写清（谁倒地/武器在哪）供下镜承接"
+    ],
+    "machine_check": "片段标题含「一镜到底」→校验器fight分支：拍点行≥2且0-30连续、行内禁「硬切」字样、豁免硬切计数与镜数带、字符上限取tier3",
+    "sources": {
+      "388": "22 打斗skill/打斗skill-水墨冲击帧Skill/好好水墨冲击帧/388-da-dou/（SKILL.md＋招式库/大招库/节奏范例）",
+      "hua128": "22 打斗skill/花128的2.5高燃特效打斗_30秒定制.md（二十一拍/三起两落情绪曲线/震动配额/单拍写作公式/环境地标锚）",
+      "wanyue_v7": "22 打斗skill/打斗skill-水墨冲击帧Skill/晚月最新版/skill-complete-v7.md（深度武库，v6.3战斗语法/v7.0导演系统按需查）"
+    },
+    "router_spec": "references/fight-router.md"
+  },
+  "storyboard": {
+    "rules_source": "E24小墨个人分镜Skill6.3原版（补充资源/小墨个人分镜SKILL6.3（豪华升级版）.md）",
+    "required_at_stage3": true,
+    "review_recheck_at_stage4_and_5": true,
+    "checks": [
+      "固定镜头≤镜头总数10%且禁连续两个固定（例外仅重锤凝固+其后留白长镜，全片≤2组）",
+      "常态镜头以极缓慢推/横移/漂移的微运镜替代绝对静止",
+      "常规镜头（平视+正面/纯过肩+平稳运镜）≤30%",
+      "侧45度为叙事与对话默认机位",
+      "景别有变化且不连三近景，每组含大景别/特写/中景档信息交代",
+      "焦段≥4种、机位角度（方向×高度组合）≥6种",
+      "情绪重锤后必须接更松景别的留白镜",
+      "逐镜标注景别/焦段/机位/运镜/景深",
+      "优先级铁律：物理可行性>叙事情绪>多样性指标，偏离留档不硬凑"
+    ]
+  },
+  "delivery": {
+    "import_request_max_bytes": 33554432
+  },
+  "assets": {
+    "character_ratio": "16:9",
+    "character_layout": "front_identity_closeup + front_full + character_left_90_full + back_full",
+    "scene_ratio": "16:9",
+    "scene_layout": "single_panorama"
+  },
+  "voice": {
+    "source_tags": [
+      "口型对白",
+      "心理独白",
+      "画外旁白",
+      "画外余音",
+      "画外延续",
+      "低声自语",
+      "混叠人声"
+    ],
+    "human_voice_tags": [
+      "口型对白",
+      "心理独白",
+      "画外延续",
+      "低声自语",
+      "混叠人声"
+    ],
+    "narrator_tags": [
+      "画外旁白",
+      "画外余音"
+    ],
+    "require_lip_state": true,
+    "max_hanzi_per_sec": 5.0,
+    "rate_exempt_keywords": [
+      "申报",
+      "跨切",
+      "综合速率",
+      "画外延续",
+      "画外余音",
+      "无口型",
+      "气口",
+      "余音"
+    ],
+    "voice_master_required": true,
+    "voice_master_at_asset_stage": true,
+    "voice_master_anchors_min": 3,
+    "voice_master_anchors_max": 5,
+    "voice_lock_in_public": true,
+    "voice_lock_marker": "声线锁定：",
+    "voice_lock_covers_speakers_only": true,
+    "voice_lock_consistency": true,
+    "default_route": "model_native_audio",
+    "fallback_route": "post_dubbing_after_sample_gate_fail",
+    "dubbing_script_internal": "内部/08-配音台本.md"
+  },
+  "prompt_style": {
+    "require_natural_language_rows": true,
+    "forbid_shot_shorthand": true,
+    "procedural_row_literals": [
+      "固定机位拍下",
+      "固定机位拍摄",
+      "固定机位构成"
+    ],
+    "procedural_row_opening_regex": "^(?:大全景|大远景|全景|远景|中近景|中景|近景|大特写|特写)(?:以|从|用)"
+  },
+  "review": {
+    "independent_reviews_min": 1,
+    "baseline": "single_model_fresh_independent_context",
+    "distinct_models": "optional_enhancement",
+    "adversarial_review_required": true,
+    "review_perspectives": [
+      "剧情忠实与因果",
+      "表演与动作可拍性",
+      "空间与上下文衔接",
+      "声音来源口型与声线",
+      "小墨6.3视感复读（机位配比/固定镜头/运镜/景别焦段景深/重锤后留白）",
+      "硬规与字符时间轴"
+    ],
+    "evidence_required_for_findings": true,
+    "require_reviewer_identity_record": true,
+    "full_coverage_each_round": true,
+    "rollback_to_last_passing_version": true,
+    "rerun_all_gates_after_regeneration": true,
+    "max_rollback_cycles_before_escalation": 2,
+    "total_rounds_soft_cap": 4,
+    "continuity": {
+      "required_dimension": true,
+      "check_at_generation_time": true,
+      "scopes": [
+        "shot_to_shot",
+        "segment_to_segment",
+        "episode_to_episode"
+      ],
+      "checks": [
+        "人物空间站位与朝向视线",
+        "场景地标布局光向与时间",
+        "动作与道具状态的出入口衔接",
+        "剧情因果与情绪的流畅承接"
+      ]
+    }
+  },
+  "script_routes": {
+    "default_route": "R-AI",
+    "ask_user_once_if_unspecified": true,
+    "R-AI": {
+      "label": "AI短剧制式（默认）",
+      "sources": [
+        "15 ZHIFEIJI-小说转剧本SKILL/03-ChatGPT完整指令.txt",
+        "24 剧本创作skill合集/小说转AI影视剧本skill.md"
+      ],
+      "layer_checks": [
+        "一个动作行=一个可生成画面",
+        "单集900-1200字/1-3场/20-30动作行/15-20条台词(±20%)",
+        "爽点每集>=1且前3集必含核心爽点",
+        "心理活动必须有出口",
+        "支线不回归主线即砍",
+        "零注水",
+        "视觉可执行性:避免大规模群战场/复杂运镜/微表情堆叠",
+        "每集以钩子收尾"
+      ],
+      "volume_scope": "仅适用于用户可见的单集交付剧本；内部02拍摄剧本层按分镜需要，用 R-PLAIN 档机检",
+      "internal_script_tier": "R-PLAIN"
+    },
+    "R-SERIES": {
+      "label": "系列季结构",
+      "sources": [
+        "15 ZHIFEIJI-小说转剧本SKILL/03-ChatGPT完整指令.txt",
+        "24 剧本创作skill合集/短剧系列剧本创作skill.md"
+      ],
+      "layer_checks": [
+        "钩子强度每集>=L3且第1/6集>=L4",
+        "钩子类型不连续两集重复",
+        "每3集释放一部分悬念",
+        "人物微弧/中弧/大弧",
+        "重要配角至少1集独立视角",
+        "余韵七技法选>=3(沉默落点必选)+回望起点+每人独立收束",
+        "反俗套审查",
+        "单集独立满足"
+      ]
+    },
+    "R-MICRO": {
+      "label": "微电影单部",
+      "sources": [
+        "15 ZHIFEIJI-小说转剧本SKILL/03-ChatGPT完整指令.txt",
+        "24 剧本创作skill合集/微电影剧本创作skill.md"
+      ],
+      "layer_checks": [
+        "人物驱动非情节驱动",
+        "核心人物2最多3且禁超4个有台词角色",
+        "六层人物档案+主角对手镜像对立",
+        "情感在前逻辑在后/展示不讲述",
+        "代价不可逆",
+        "观众略领先于角色",
+        "每场必须改变什么",
+        "结束在沉默中",
+        "反俗套审查"
+      ]
+    },
+    "R-PLAIN": {
+      "label": "纯S15通用改编",
+      "sources": [
+        "15 ZHIFEIJI-小说转剧本SKILL/03-ChatGPT完整指令.txt"
+      ],
+      "layer_checks": []
+    }
+  },
+  "micro_expression": {
+    "enabled": true,
+    "source": "E25 真人感微表情表演 Skill",
+    "layer_reference": "references/micro-expression-layer.md",
+    "max_performance_shots_per_segment": 2,
+    "max_cues_per_shot": 2,
+    "max_cues_per_segment": 4,
+    "smile_risk_words": [
+      "嘴角撑住",
+      "体面微笑",
+      "礼貌笑",
+      "淡淡笑",
+      "苦笑",
+      "嘴角微微上扬",
+      "嘴角上扬"
+    ],
+    "smile_qualifiers": [
+      "不上扬",
+      "不笑",
+      "不出现",
+      "禁止",
+      "保持闭合",
+      "中性",
+      "平直",
+      "不明显下垂",
+      "收紧后恢复"
+    ],
+    "slow_verbs_to_avoid": [
+      "缓慢",
+      "极慢",
+      "慢慢",
+      "逐渐",
+      "悠长",
+      "长时间",
+      "凝固"
+    ],
+    "review_dimension": "表演可见性与情绪极性",
+    "verified_with_footage": false,
+    "smile_watch_words": [
+      "微笑",
+      "释然",
+      "温和"
+    ]
+  }
+}

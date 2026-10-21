@@ -1,0 +1,21 @@
+# macOS
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+
+# 本地生成输出（不提交到 GitHub）
+创作输出/
+审查输出/
+生成输出/
+整改输出/
+outputs/
+视频拆解_*/
+
+# 临时文件
+*.tmp
+*.bak
+*.log
+__pycache__/
+node_modules/
+.venv/

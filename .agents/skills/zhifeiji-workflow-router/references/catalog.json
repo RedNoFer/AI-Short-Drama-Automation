@@ -1,0 +1,825 @@
+{
+  "schema_version": 1,
+  "resource_root": "/Users/a1/work/3000课程21个skill",
+  "verified_on": "2026-10-16；2026-10-20 新增 E25",
+  "groups": [
+    {
+      "id": "A",
+      "name": "剧本与改编"
+    },
+    {
+      "id": "B",
+      "name": "剧本资产拆解"
+    },
+    {
+      "id": "C",
+      "name": "角色、服饰与模型"
+    },
+    {
+      "id": "D",
+      "name": "摄影与视觉定调"
+    },
+    {
+      "id": "E",
+      "name": "场景与静态叙事"
+    },
+    {
+      "id": "F",
+      "name": "视频与动态表演"
+    }
+  ],
+  "bundles": [
+    {
+      "id": "S01",
+      "group": "C",
+      "name": "IP角色捏人视觉导演",
+      "directory": "01 ZHIFEIJI-IP角色捏人视觉导演SKILL",
+      "input": "角色参考图、素体轮廓、五官或海报参考",
+      "output": "二维角色、风格化三维角色、皮肤特写与摄影海报",
+      "select_when": "原创卡通IP、改脸型/五官、二维转三维、角色海报",
+      "boundary": "高写实影视人物优先S16；技术规格板用S14。",
+      "markdown": [
+        {
+          "path": "01 ZHIFEIJI-IP角色捏人视觉导演SKILL/01-角色设计核心流程.md",
+          "role": "main",
+          "label": "二维角色设计",
+          "read_when": "二维设计、脸型五官编辑时读取"
+        },
+        {
+          "path": "01 ZHIFEIJI-IP角色捏人视觉导演SKILL/02-三维与皮肤提示词.md",
+          "role": "main",
+          "label": "三维与皮肤",
+          "read_when": "二维定稿转三维、SSS皮肤、重打光时读取"
+        },
+        {
+          "path": "01 ZHIFEIJI-IP角色捏人视觉导演SKILL/03-摄影与海报提示词.md",
+          "role": "main",
+          "label": "摄影与海报",
+          "read_when": "多景别组图、特写、角色海报时读取"
+        },
+        {
+          "path": "01 ZHIFEIJI-IP角色捏人视觉导演SKILL/视觉资料库编号索引.md",
+          "role": "reference",
+          "label": "视觉编号索引",
+          "read_when": "用户提供对应视觉资料图时查编号；图库本体未包含"
+        }
+      ],
+      "companions": [
+        {
+          "path": "01 ZHIFEIJI-IP角色捏人视觉导演SKILL/配置文件.txt",
+          "role": "setup",
+          "label": "自定义GPT配置",
+          "read_when": "用户要求配置/安装时读取"
+        }
+      ],
+      "dependencies": [
+        {
+          "reference": "视觉资料库编号索引.md列出的九宫格与原图",
+          "expected_path": null,
+          "status": "missing",
+          "effect": "本目录未包含该视觉图库；文本模板仍可配合用户素材使用"
+        }
+      ]
+    },
+    {
+      "id": "S02",
+      "group": "F",
+      "name": "分镜大师颗粒度增强",
+      "directory": "02 ZHIFEIJI-分镜大师颗粒度增强SKILL",
+      "input": "完整可拍剧本，或已有逐镜分镜表",
+      "output": "五段式逐镜视频提示词、动作时间码与资产锚定",
+      "select_when": "完整剧本精细拆镜、逐拍动作、Seedance 2.0制片级提示词",
+      "boundary": "叙事时间块不等于逐镜表；已有逐镜表不重新拆镜。标题和时长条款有冲突，见入口规范。",
+      "markdown": [
+        {
+          "path": "02 ZHIFEIJI-分镜大师颗粒度增强SKILL/Seedance2_拆镜提示词_外部单文件SKILL.md",
+          "role": "main",
+          "label": "主执行Markdown",
+          "read_when": "执行该模块时完整读取"
+        }
+      ],
+      "companions": [
+        {
+          "path": "02 ZHIFEIJI-分镜大师颗粒度增强SKILL/配置描述.txt",
+          "role": "setup",
+          "label": "自定义GPT配置",
+          "read_when": "用户要求配置/安装时读取"
+        }
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "S03",
+      "group": "B",
+      "name": "剧本资产提取",
+      "directory": "03 ZHIFEIJI-资产提取SKILL",
+      "input": "完整剧本",
+      "output": "角色/场景/道具清单、稳定@ID与资产出图提示词",
+      "select_when": "拆人物、拆场景、拆道具、资产编号",
+      "boundary": "只拆资产，不写新剧情、不拆视频镜头。资产编号需要实际素材对应。",
+      "markdown": [
+        {
+          "path": "03 ZHIFEIJI-资产提取SKILL/Seedance2_拆资产_外部单文件SKILL.md",
+          "role": "main",
+          "label": "主执行Markdown",
+          "read_when": "执行该模块时完整读取"
+        }
+      ],
+      "companions": [
+        {
+          "path": "03 ZHIFEIJI-资产提取SKILL/配置文件.txt",
+          "role": "setup",
+          "label": "自定义GPT配置",
+          "read_when": "用户要求配置/安装时读取"
+        }
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "S04",
+      "group": "C",
+      "name": "商业人像出图",
+      "directory": "04 ZHIFEIJIAI-商业人像出图SKILL",
+      "input": "人物参考、写真或美妆广告需求",
+      "output": "商业人像提示词；具备出图能力时生成写真",
+      "select_when": "护肤美妆广告、高端棚拍、韩系写真、皮肤灯光细化",
+      "boundary": "商业摄影与通用电影剧照不同；角色身份开发用S01/S16。",
+      "markdown": [
+        {
+          "path": "04 ZHIFEIJIAI-商业人像出图SKILL/ZHIFEIJIAI_BEAUTY_PORTRAIT_MASTER_v3.0.md",
+          "role": "main",
+          "label": "主执行Markdown",
+          "read_when": "执行该模块时完整读取"
+        }
+      ],
+      "companions": [
+        {
+          "path": "04 ZHIFEIJIAI-商业人像出图SKILL/配置说明.txt",
+          "role": "setup",
+          "label": "自定义GPT配置",
+          "read_when": "用户要求配置/安装时读取"
+        }
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "S05",
+      "group": "D",
+      "name": "电影感自然出图V3",
+      "directory": "05 ZHIFEIJI-电影感自然出图SKILL",
+      "input": "森林/荒漠/遗迹概念或已有提示词",
+      "output": "史诗环境电影摄影提示词",
+      "select_when": "古森林、沙漠边境、峡谷、巨大遗迹、小人物与大环境",
+      "boundary": "题材定向，通用电影化/其他题材优先S06。",
+      "markdown": [
+        {
+          "path": "05 ZHIFEIJI-电影感自然出图SKILL/GPT电影感V3.md",
+          "role": "main",
+          "label": "主执行Markdown",
+          "read_when": "执行该模块时完整读取"
+        }
+      ],
+      "companions": [
+        {
+          "path": "05 ZHIFEIJI-电影感自然出图SKILL/配置说明.txt",
+          "role": "setup",
+          "label": "自定义GPT配置",
+          "read_when": "用户要求配置/安装时读取"
+        }
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "S06",
+      "group": "D",
+      "name": "电影叙事自然出图V4",
+      "directory": "06 ZHIFEIJI-电影感自然出图 2.0 SKILL",
+      "input": "一句剧情、参考图、已有图片或旧提示词",
+      "output": "电影感单图、原图编辑、三张独立叙事图或提示词",
+      "select_when": "通用电影感、去AI味、原图电影化、三联叙事、局部修改",
+      "boundary": "三联是三张叙事镜头，不等于S17同场景资产板；是否出图遵从用户产物要求。",
+      "markdown": [
+        {
+          "path": "06 ZHIFEIJI-电影感自然出图 2.0 SKILL/ZHIFEIJI_电影感自然出图_网页端单文件版_第四版.md",
+          "role": "main",
+          "label": "主执行Markdown",
+          "read_when": "执行该模块时完整读取"
+        }
+      ],
+      "companions": [
+        {
+          "path": "06 ZHIFEIJI-电影感自然出图 2.0 SKILL/配置说明.txt",
+          "role": "setup",
+          "label": "自定义GPT配置",
+          "read_when": "用户要求配置/安装时读取"
+        },
+        {
+          "path": "06 ZHIFEIJI-电影感自然出图 2.0 SKILL/使用说明.txt",
+          "role": "guide",
+          "label": "补充使用说明",
+          "read_when": "需要详细使用步骤或引用技巧时读取"
+        }
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "S07",
+      "group": "F",
+      "name": "Seedance 2.0分镜导演扩写师",
+      "directory": "07 ZHIFEIJIAI-分镜导演扩写师SKILL",
+      "input": "口语剧情、动作想法、手写分镜或对白片段",
+      "output": "可复制的片段视频提示词",
+      "select_when": "一句想法扩写、短片段、15秒直出版",
+      "boundary": "完整剧本精细逐镜优先S02；实际时长参数需核对平台。",
+      "markdown": [
+        {
+          "path": "07 ZHIFEIJIAI-分镜导演扩写师SKILL/ZHIFEIJIAI_Seedance2_SKILL_v0.2_15s直出版.md",
+          "role": "main",
+          "label": "主执行Markdown",
+          "read_when": "执行该模块时完整读取"
+        }
+      ],
+      "companions": [
+        {
+          "path": "07 ZHIFEIJIAI-分镜导演扩写师SKILL/配置说明.txt",
+          "role": "setup",
+          "label": "自定义GPT配置",
+          "read_when": "用户要求配置/安装时读取"
+        }
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "S08",
+      "group": "F",
+      "name": "Kling 3.0演员导演",
+      "directory": "08 ZHIFEIJIAI-Kling 3.0 演员导演SKILL",
+      "input": "人物状态、关系、台词、情绪或人物参考图",
+      "output": "中文演员调度视频提示词",
+      "select_when": "可灵/Kling、微表情、停顿、方言、情绪弧线、口播",
+      "boundary": "适用于表演控制，不改套Seedance最终格式，也不自动生成视频。",
+      "markdown": [
+        {
+          "path": "08 ZHIFEIJIAI-Kling 3.0 演员导演SKILL/ZHIFEIJIAI_Kling3.0_Actor_Director_演员导演系统_SKILL_v3.0.md",
+          "role": "main",
+          "label": "主执行Markdown",
+          "read_when": "执行该模块时完整读取"
+        }
+      ],
+      "companions": [
+        {
+          "path": "08 ZHIFEIJIAI-Kling 3.0 演员导演SKILL/配置说明.txt",
+          "role": "setup",
+          "label": "自定义GPT配置",
+          "read_when": "用户要求配置/安装时读取"
+        }
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "S09",
+      "group": "E",
+      "name": "多视图叙事推演",
+      "directory": "09 ZHIFEIJI 多视图叙事推演SKILL",
+      "input": "剧情、当前画面、角色/场景/道具/产品参考图",
+      "output": "故事板、四/25宫格、前后时刻推演、全景与设定图",
+      "select_when": "剧情推演、多机位菜单、角色多视图、故事板、720全景",
+      "boundary": "固定场景电影主图+三/五/九格资产板优先S17；独立环境反打用S19。",
+      "markdown": [
+        {
+          "path": "09 ZHIFEIJI 多视图叙事推演SKILL/ZHIFEIJI出图叙事.md",
+          "role": "main",
+          "label": "主执行Markdown",
+          "read_when": "执行该模块时完整读取"
+        }
+      ],
+      "companions": [
+        {
+          "path": "09 ZHIFEIJI 多视图叙事推演SKILL/配置说明.txt",
+          "role": "setup",
+          "label": "自定义GPT配置",
+          "read_when": "用户要求配置/安装时读取"
+        }
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "S10",
+      "group": "C",
+      "name": "人物与服装设定板",
+      "directory": "10 ZHIFEIJI-人物服饰设定板SKILL",
+      "input": "人物、单件服装或整套穿搭参考图",
+      "output": "CG人物设定图、服饰商品板或穿搭企划板",
+      "select_when": "CG人设、服装多状态、鞋包配饰、整套穿搭",
+      "boundary": "高写实锁脸流程用S16；机甲技术规格板用S14。",
+      "markdown": [
+        {
+          "path": "10 ZHIFEIJI-人物服饰设定板SKILL/ZHIFEIJI_人物与服装设定图生成器_SKILL_V2.md",
+          "role": "main",
+          "label": "主执行Markdown",
+          "read_when": "执行该模块时完整读取"
+        }
+      ],
+      "companions": [
+        {
+          "path": "10 ZHIFEIJI-人物服饰设定板SKILL/配置说明.txt",
+          "role": "setup",
+          "label": "自定义GPT配置",
+          "read_when": "用户要求配置/安装时读取"
+        }
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "S11",
+      "group": "D",
+      "name": "电影视觉定调师",
+      "directory": "11 ZHIFEIJI-电影视觉定调师SKILL",
+      "input": "参考图、海报、色卡、角色/场景图或风格要求",
+      "output": "视觉摘要、出图提示词、色卡提示词、视频风格锁定词",
+      "select_when": "全片定调、色卡、跨镜风格统一、图转视频风格",
+      "boundary": "输出风格字段供后续模块调用，不代替它们的主产物格式。",
+      "markdown": [
+        {
+          "path": "11 ZHIFEIJI-电影视觉定调师SKILL/电影视觉定调链路师_Skill.md",
+          "role": "main",
+          "label": "主执行Markdown",
+          "read_when": "执行该模块时完整读取"
+        }
+      ],
+      "companions": [
+        {
+          "path": "11 ZHIFEIJI-电影视觉定调师SKILL/配置描述.txt",
+          "role": "setup",
+          "label": "自定义GPT配置",
+          "read_when": "用户要求配置/安装时读取"
+        }
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "S12",
+      "group": "E",
+      "name": "静态图片构图与角度",
+      "directory": "12 ZHIFEIJI-构图SKILL",
+      "input": "参考图片与目标角度/构图",
+      "output": "调整静态视角后的图片或用户指定的提示词",
+      "select_when": "图片改正面/侧面/鸟瞰、站位、前景遮挡、构图",
+      "boundary": "视频镜头起终点与运动用S13。",
+      "markdown": [
+        {
+          "path": "12 ZHIFEIJI-构图SKILL/图片构图角度命令_直接出图版_SKILL.md",
+          "role": "main",
+          "label": "主执行Markdown",
+          "read_when": "执行该模块时完整读取"
+        }
+      ],
+      "companions": [
+        {
+          "path": "12 ZHIFEIJI-构图SKILL/配置文件.txt",
+          "role": "setup",
+          "label": "自定义GPT配置",
+          "read_when": "用户要求配置/安装时读取"
+        }
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "S13",
+      "group": "F",
+      "name": "Seedance 2.0视频角度与运镜",
+      "directory": "13 ZHIFEIJI-Seedance 2.0 视频角度命令SKILL",
+      "input": "图片/场景描述与运镜目标",
+      "output": "包含镜头起点、角度、运动、终点的提示词",
+      "select_when": "视频推进、后拉、横移、环绕、俯冲、鸟瞰下降",
+      "boundary": "只改静态图机位用S12；整段剧情拆镜另选S02/S18/S21。",
+      "markdown": [
+        {
+          "path": "13 ZHIFEIJI-Seedance 2.0 视频角度命令SKILL/Seedance2.0_视频角度命令_SKILL.md",
+          "role": "main",
+          "label": "主执行Markdown",
+          "read_when": "执行该模块时完整读取"
+        }
+      ],
+      "companions": [
+        {
+          "path": "13 ZHIFEIJI-Seedance 2.0 视频角度命令SKILL/配置说明.txt",
+          "role": "setup",
+          "label": "自定义GPT配置",
+          "read_when": "用户要求配置/安装时读取"
+        }
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "S14",
+      "group": "C",
+      "name": "模型三视图技术设定板",
+      "directory": "14 ZHIFEIJI-机甲模型三视图设定板SKILL",
+      "input": "机甲、载具、飞船、武器、产品等模型参考图",
+      "output": "正侧背三视图、尺寸区、五个细节框与规格区",
+      "select_when": "机械技术板、模型三视图、尺度与零件细节",
+      "boundary": "人物身份特写+全身三视图用S16。未给尺寸不虚构精确数据。",
+      "markdown": [
+        {
+          "path": "14 ZHIFEIJI-机甲模型三视图设定板SKILL/ZHIFEIJI_模型三视图设定板_SKILL_v1.2.md",
+          "role": "main",
+          "label": "主执行Markdown",
+          "read_when": "执行该模块时完整读取"
+        }
+      ],
+      "companions": [
+        {
+          "path": "14 ZHIFEIJI-机甲模型三视图设定板SKILL/配置说明.txt",
+          "role": "setup",
+          "label": "自定义GPT配置",
+          "read_when": "用户要求配置/安装时读取"
+        },
+        {
+          "path": "14 ZHIFEIJI-机甲模型三视图设定板SKILL/ZHIFEIJI_模型三视图设定板_使用说明.txt",
+          "role": "guide",
+          "label": "补充使用说明",
+          "read_when": "需要详细使用步骤或引用技巧时读取"
+        }
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "S15",
+      "group": "A",
+      "name": "小说转竖屏短剧",
+      "directory": "15 ZHIFEIJI-小说转剧本SKILL",
+      "input": "小说、章节、故事梗概或已有分集规划",
+      "output": "故事档案、分集规划、剧情梗概、拍摄剧本或AI分镜",
+      "select_when": "小说改编、忠实/重构、分集、人物关系、伏笔、拍摄稿",
+      "boundary": "执行需03-ChatGPT完整指令.txt及对应知识MD；主入口MD是使用说明，不是完整执行指令。",
+      "markdown": [
+        {
+          "path": "15 ZHIFEIJI-小说转剧本SKILL/01-Skill使用说明.md",
+          "role": "entry",
+          "label": "小说改编使用入口",
+          "read_when": "选择改编/输出模式时读取"
+        },
+        {
+          "path": "15 ZHIFEIJI-小说转剧本SKILL/02-ChatGPT配置说明.md",
+          "role": "setup",
+          "label": "ChatGPT配置",
+          "read_when": "仅创建自定义GPT或配置知识库时读取"
+        },
+        {
+          "path": "15 ZHIFEIJI-小说转剧本SKILL/04-开场对白与快捷命令.md",
+          "role": "commands",
+          "label": "快捷命令",
+          "read_when": "需要命令或配置开场入口时读取"
+        },
+        {
+          "path": "15 ZHIFEIJI-小说转剧本SKILL/ChatGPT知识库/adaptation-modes.md",
+          "role": "reference",
+          "label": "改编模式与故事档案",
+          "read_when": "忠实/重构改编、建立人物伏笔档案时读取"
+        },
+        {
+          "path": "15 ZHIFEIJI-小说转剧本SKILL/ChatGPT知识库/compliance-baseline.md",
+          "role": "reference",
+          "label": "来源与发布基线",
+          "read_when": "任务涉及来源授权、内容边界或发布检查时读取"
+        },
+        {
+          "path": "15 ZHIFEIJI-小说转剧本SKILL/ChatGPT知识库/output-profiles.md",
+          "role": "reference",
+          "label": "输出模式",
+          "read_when": "选择梗概/分集/拍摄稿/AI分镜时读取"
+        },
+        {
+          "path": "15 ZHIFEIJI-小说转剧本SKILL/ChatGPT知识库/quality-rubric.md",
+          "role": "reference",
+          "label": "完稿质量",
+          "read_when": "审稿、完稿语义检查时读取"
+        },
+        {
+          "path": "15 ZHIFEIJI-小说转剧本SKILL/ChatGPT知识库/screenplay-format.md",
+          "role": "reference",
+          "label": "剧本格式",
+          "read_when": "拍摄稿、AI分镜与格式检查时读取"
+        },
+        {
+          "path": "15 ZHIFEIJI-小说转剧本SKILL/ChatGPT知识库/short-drama-rules.md",
+          "role": "reference",
+          "label": "短剧创作规则",
+          "read_when": "改编、分集与短剧正文创作时读取"
+        }
+      ],
+      "companions": [
+        {
+          "path": "15 ZHIFEIJI-小说转剧本SKILL/03-ChatGPT完整指令.txt",
+          "role": "execution",
+          "label": "完整改编执行指令",
+          "read_when": "执行改编任务时读取；此TXT不能被入口说明MD替代"
+        }
+      ],
+      "dependencies": [
+        {
+          "reference": "可选工具/validate_screenplay.py",
+          "expected_path": "15 ZHIFEIJI-小说转剧本SKILL/可选工具/validate_screenplay.py",
+          "status": "missing",
+          "effect": "不能执行原格式校验脚本；人工检查并标明"
+        },
+        {
+          "reference": "assets/shooting-script-template.md",
+          "expected_path": "15 ZHIFEIJI-小说转剧本SKILL/assets/shooting-script-template.md",
+          "status": "missing",
+          "effect": "外部模板未附；使用现有ChatGPT知识库/screenplay-format.md"
+        }
+      ]
+    },
+    {
+      "id": "S16",
+      "group": "C",
+      "name": "插画转高写实人物资产",
+      "directory": "16 ZHIFEIJI-插画转高写实人物资产SKILLL",
+      "input": "人物/异形/机械人体插画与已确认脸部母版（如有）",
+      "output": "线稿、肖像定妆、写实全身或人物身份三视图",
+      "select_when": "转写实、先定脸、锁脸、写实皮肤、影视人物三视图",
+      "boundary": "未确认脸部母版时先做肖像；不得直接跳到全身与三视图。",
+      "markdown": [
+        {
+          "path": "16 ZHIFEIJI-插画转高写实人物资产SKILLL/ZHIFEIJI_ZHIFEIJI_图片转高写实人物资产_SKILL_v1.5.md",
+          "role": "main",
+          "label": "主执行Markdown",
+          "read_when": "执行该模块时完整读取"
+        }
+      ],
+      "companions": [
+        {
+          "path": "16 ZHIFEIJI-插画转高写实人物资产SKILLL/ZHIFEIJI_ZHIFEIJI_图片转高写实人物资产_使用说明_v1.5.txt",
+          "role": "guide",
+          "label": "补充使用说明",
+          "read_when": "需要详细使用步骤或引用技巧时读取"
+        }
+      ],
+      "dependencies": [
+        {
+          "reference": "C:/Users/elliot/Desktop/高达机甲SKILL/机甲风格及角色设定展板-正确眼神版.png",
+          "expected_path": null,
+          "status": "missing",
+          "effect": "原作者外部图库未附；不能声称已读取"
+        }
+      ]
+    },
+    {
+      "id": "S17",
+      "group": "E",
+      "name": "电影感多视角场景资产",
+      "directory": "17 ZHIFEJI-电影感多视角场景资产SKILL",
+      "input": "场景事实原图，或已确认电影感场景主图",
+      "output": "电影感主图及三画面/五画面/九宫格资产板和提示词",
+      "select_when": "一图生成同场景三/五/九格、场景母版、多视角资产",
+      "boundary": "缺四份references外部参考，不能当作完整自包含技能；局部实现和替代方案须说明范围。",
+      "markdown": [
+        {
+          "path": "17 ZHIFEJI-电影感多视角场景资产SKILL/ZHIFEJI电影感多视角场景资产.md",
+          "role": "main",
+          "label": "主执行Markdown",
+          "read_when": "执行该模块时完整读取"
+        }
+      ],
+      "companions": [
+        {
+          "path": "17 ZHIFEJI-电影感多视角场景资产SKILL/配置说明.txt",
+          "role": "setup",
+          "label": "自定义GPT配置",
+          "read_when": "用户要求配置/安装时读取"
+        },
+        {
+          "path": "17 ZHIFEJI-电影感多视角场景资产SKILL/ZHIFEIJI_配图对话命令使用说明.txt",
+          "role": "guide",
+          "label": "补充使用说明",
+          "read_when": "需要详细使用步骤或引用技巧时读取"
+        }
+      ],
+      "dependencies": [
+        {
+          "reference": "references/prompt-library.md",
+          "expected_path": "17 ZHIFEJI-电影感多视角场景资产SKILL/references/prompt-library.md",
+          "status": "missing",
+          "effect": "主MD声明每次执行前读取；原技能完整执行有缺项"
+        },
+        {
+          "reference": "references/gpt-setup.md",
+          "expected_path": "17 ZHIFEJI-电影感多视角场景资产SKILL/references/gpt-setup.md",
+          "status": "missing",
+          "effect": "对应配置/演示参考未附"
+        },
+        {
+          "reference": "references/demo-manifest.md",
+          "expected_path": "17 ZHIFEJI-电影感多视角场景资产SKILL/references/demo-manifest.md",
+          "status": "missing",
+          "effect": "对应配置/演示参考未附"
+        },
+        {
+          "reference": "references/demo-prompts.md",
+          "expected_path": "17 ZHIFEJI-电影感多视角场景资产SKILL/references/demo-prompts.md",
+          "status": "missing",
+          "effect": "对应配置/演示参考未附"
+        }
+      ]
+    },
+    {
+      "id": "S18",
+      "group": "F",
+      "name": "Seedance 2.5多镜头动作分镜",
+      "directory": "18 ZHIFEIJI-2.5分镜提示词SKILL",
+      "input": "可拍剧本、动作/追逐片段与参考图映射",
+      "output": "连续多镜头视频提示词、动作因果链与片段承接",
+      "select_when": "Seedance 2.5、打斗、追逐、多镜头、动作因果链",
+      "boundary": "对话情绪为主的竖屏短剧优先S21；模型参数是文档假设。",
+      "markdown": [
+        {
+          "path": "18 ZHIFEIJI-2.5分镜提示词SKILL/拆镜3.0_Seedance2.5专版_紧凑格式_v3.5.md",
+          "role": "main",
+          "label": "主执行Markdown",
+          "read_when": "执行该模块时完整读取"
+        },
+        {
+          "path": "18 ZHIFEIJI-2.5分镜提示词SKILL/Seedance2.5_通用提示词生成适配器_v1.0.md",
+          "role": "adapter",
+          "label": "Seedance 2.5 通用提示词生成适配器",
+          "read_when": "用户要求从小墨6.3分镜组装紧凑 Seedance 2.5 提示词时读取"
+        }
+      ],
+      "companions": [
+        {
+          "path": "18 ZHIFEIJI-2.5分镜提示词SKILL/配置描述.txt",
+          "role": "setup",
+          "label": "自定义GPT配置",
+          "read_when": "用户要求配置/安装时读取"
+        }
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "S19",
+      "group": "E",
+      "name": "同场景正反打与360度空间推演",
+      "directory": "19 ZHIFEIJI-正反打SKILL",
+      "input": "一张或多张场景参考图",
+      "output": "独立反打/左/右/鸟瞰环境图提示词，原视角重建可选",
+      "select_when": "反打、左右环境、空间连续、鸟瞰建立镜",
+      "boundary": "实际入口扩展名为.MD；补足不可见区域是推断，不是真实3D重建。",
+      "markdown": [
+        {
+          "path": "19 ZHIFEIJI-正反打SKILL/ZHIFEIJI正反打.MD",
+          "role": "main",
+          "label": "主执行Markdown",
+          "read_when": "执行该模块时完整读取"
+        }
+      ],
+      "companions": [
+        {
+          "path": "19 ZHIFEIJI-正反打SKILL/场景标记使用技巧.txt",
+          "role": "guide",
+          "label": "补充使用说明",
+          "read_when": "需要详细使用步骤或引用技巧时读取"
+        }
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "S20",
+      "group": "A",
+      "name": "剧本诊断医生",
+      "directory": "20 ZHIFEIJI-剧本诊断医生SKILL",
+      "input": "已有剧本、小说体剧本或文学化段落",
+      "output": "影视化诊断报告与标准可拍剧本修正",
+      "select_when": "抽象心理、文学比喻、可拍摄性、剧本格式修正",
+      "boundary": "按用户请求选择只诊断或诊断并修正；完整小说改编优先S15。",
+      "markdown": [
+        {
+          "path": "20 ZHIFEIJI-剧本诊断医生SKILL/剧本医生_v0.1.0_影视化诊断与标准化.md",
+          "role": "main",
+          "label": "主执行Markdown",
+          "read_when": "执行该模块时完整读取"
+        }
+      ],
+      "companions": [
+        {
+          "path": "20 ZHIFEIJI-剧本诊断医生SKILL/剧本医生_GPT配置文件.txt",
+          "role": "setup",
+          "label": "自定义GPT配置",
+          "read_when": "用户要求配置/安装时读取"
+        }
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "S21",
+      "group": "F",
+      "name": "竖屏短剧情绪分镜",
+      "directory": "21",
+      "input": "对话、情感、冲突类可拍短剧剧本",
+      "output": "9:16情绪驱动的简洁视频分镜提示词",
+      "select_when": "竖屏短剧、情绪转折、对白、过肩与反应镜头",
+      "boundary": "仅有9:16不足以触发；动作打斗用S18，Kling表演用S08。",
+      "markdown": [
+        {
+          "path": "21/竖屏短剧分镜.md",
+          "role": "main",
+          "label": "主执行Markdown",
+          "read_when": "执行该模块时完整读取"
+        }
+      ],
+      "companions": [
+        {
+          "path": "21/GPT配置文件.txt",
+          "role": "setup",
+          "label": "自定义GPT配置",
+          "read_when": "用户要求配置/安装时读取"
+        }
+      ],
+      "dependencies": []
+    }
+  ],
+  "extras": [
+    {
+      "id": "E22",
+      "name": "白模预演固定替换模板",
+      "path": "ZHIFEIJI｜白模预演固定替换模板_v1.0.pdf",
+      "type": "pdf",
+      "input": "白模预演视频、正式场景图与人物参考图",
+      "output": "继承白模运镜与人物站位的正式资产替换提示词",
+      "boundary": "附加模板没有MD；实际视频生成需要支持视频参考的工具"
+    },
+    {
+      "id": "E23",
+      "name": "角色资产美工与建模提示词",
+      "path": ".agents/skills/character-asset-prompts/SKILL.md",
+      "type": "skill-markdown",
+      "input": "人物描述、剧本角色条目、身份/服装参考或已确认人物资产",
+      "output": "具体脸发体态与服装材质设计、人物建模参考提示词、身份锁定卡及验收约定",
+      "boundary": "本地美术补充；保留身份和画风，按主模块执行锁脸/布局，默认仅交付文字，不表示实际3D模型或已生成图片"
+    },
+    {
+      "id": "E24",
+      "name": "小墨个人分镜 Skill 6.3",
+      "path": "补充资源/小墨个人分镜SKILL6.3（豪华升级版）.md",
+      "type": "source-markdown",
+      "input": "可拍剧本或小说片段、场景与人物事实；片段视频任务另提供预设时长、画幅和清晰度",
+      "output": "带景别、焦段、机位、运镜、画面、光影、色调、对白、人声与音效的逐镜文字分镜",
+      "boundary": "原版不计算镜头时长、不自动分段、不输出模型提示词；按预设时长在组合工作流的分镜规划阶段划出片段边界并给镜头归属，镜头时间另记，Seedance 2.5最终正文另用S18适配器"
+    },
+    {
+      "id": "E25",
+      "name": "真人感微表情表演 Skill",
+      "path": "23 真人感微表情AI视频Skill/人物微表情表演skill.zip",
+      "type": "skill-package",
+      "input": "角色图或剧本片段、情绪与关系状态；可指定镜头时长与表演强度",
+      "output": "分时微表情表演指导：表演原型(130)、情绪路线、肌肉调度链(70)、四拍结构(基线→泄露→压回→余态)、节奏密度与嘴部安全护栏",
+      "boundary": "只负责表演与情绪层，不做编剧、不做面部绑定与口型编辑、不做合成；主文件在压缩包内 micro-expression-video-generator/，另有 seedance-prompt-master 单体整合版；微表情提示词/ 目录与既有 S10-S13 主题重叠，默认不重复引入",
+      "files": [
+        {
+          "path": "23 真人感微表情AI视频Skill/人物微表情表演skill.zip",
+          "role": "main",
+          "label": "Skill 包（SKILL.md + 7 份 references）",
+          "read_when": "执行表演层设计时按需读取对应 reference"
+        },
+        {
+          "path": "23 真人感微表情AI视频Skill/AI微表情拆解-拒绝塑料感与AI面瘫脸/seedance-prompt-单skill整合版本.zip",
+          "role": "alternate",
+          "label": "单体整合版 SKILL.md",
+          "read_when": "需要单文件版规则时"
+        }
+      ],
+      "read_when": "分镜阶段的表演镜指派、提示词阶段的表演层编译、评审阶段的表演可见性与情绪极性检查"
+    },
+    {
+      "id": "E26",
+      "name": "剧本创作 skill 合集（AI影视剧本/短剧系列/微电影）",
+      "path": "24 剧本创作skill合集",
+      "type": "source-markdown",
+      "input": "小说原文或故事大纲；用户指定的体裁与改编要求",
+      "output": "三类体裁剧本引擎：AI影视剧本制式（手术式改编+▲行制式+体量口径+爽点/钩子）、短剧系列（季级结构+五级钩子强度L1-L5+三尺度人物弧+余韵+反俗套）、微电影（六层人物档案+镜像对立+不可逆代价+反俗套）",
+      "boundary": "与 S15 互补不替代：S15 提供多产物助手、忠实/重构双模式与合规条款，本组只补体裁专属标准；不覆盖 S15 的台词逐字、故事档案与合规要求",
+      "files": [
+        {
+          "path": "24 剧本创作skill合集/小说转AI影视剧本skill.md",
+          "role": "route_ai_drama",
+          "label": "AI影视剧本引擎（默认路线）",
+          "read_when": "AI短剧制式项目的阶段1改编与体量口径"
+        },
+        {
+          "path": "24 剧本创作skill合集/短剧系列剧本创作skill.md",
+          "role": "route_series",
+          "label": "短剧系列引擎",
+          "read_when": "用户指定系列/季级结构时加读"
+        },
+        {
+          "path": "24 剧本创作skill合集/微电影剧本创作skill.md",
+          "role": "route_microfilm",
+          "label": "微电影引擎",
+          "read_when": "用户指定微电影体裁时加读"
+        }
+      ],
+      "read_when": "阶段1选择体裁路线并按该路线的专属标准评估；路线层检查项接入 story-evaluation 与 prompt-review"
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+interface:
+  display_name: "纸飞机影视工作流导航"
+  short_description: "按创作目标定位二十一组影视资源，精确读取源 Markdown 并组合工作流"
+  default_prompt: "使用 $zhifeiji-workflow-router，根据我的创作目标定位所需源文件并执行最短工作流。"

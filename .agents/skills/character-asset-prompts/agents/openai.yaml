@@ -1,0 +1,4 @@
+interface:
+  display_name: "角色资产美工与建模提示词"
+  short_description: "结合本地影视资料强化五官、妆发、服装剪裁与材质，生成一致的人物建模参考提示词"
+  default_prompt: "使用 $character-asset-prompts，结合本目录角色资料，保留已确认身份与画风，细化五官、妆发、服装和材质，生成中文人物资产提示词与锁定卡，先不出图。"
