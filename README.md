@@ -1,6 +1,8 @@
-# AI 短剧自动化
+# AI 短剧自动化（AI-Short-Drama-Automation）
 
 ZHIFEIJI AI 影视创作资源库：21 组影视创作 Skill 源文件 + 三个工作流导航 Skill（资源路由、角色资产美工、短剧工作流）。
+
+仓库地址：<https://github.com/RedNoFer/AI-Short-Drama-Automation>（私有）
 
 ## 目录结构
 
