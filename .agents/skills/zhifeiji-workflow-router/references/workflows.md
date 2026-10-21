@@ -20,6 +20,7 @@
 | 一句话 / 当前画面 → 故事板或剧情组图 | W12 |
 | 人物描述 / 已有资产 → 美工优化与建模参考提示词 | W13 |
 | 预设 15/30 秒片段 → 小墨 6.3 分镜 → Seedance 2.5 提示词 | W14 |
+| 提示词改用 MiniMax H3 结构 → H3 分镜 → 结构化视频提示词 | W17 |
 
 ## W01｜小说到多集短剧
 
@@ -77,6 +78,19 @@
 ## W16｜Wan3.0 提示词轨（生成模型双轨）
 
 按生成模型选轨：Seedance 2.5 走既有 S18＋小墨规范；**Wan3.0** 走 [Wan3.0 提示词规范](../short-drama-workflow/references/wan30-prompt-spec.md)（写法标准）与 [Wan3.0 通用提示词生成适配器 v1.0](../short-drama-workflow/references/wan30-adapter-v1.0.md)（编译器手册，与 S18 同构）——20000 字符上限（目标 3000–8000，防稀释）、2–30 秒弹性时长／智能时长、0.5 秒拍点粒度、多模态参考（10 图＋5 视频作动作/运镜/特效参考＋5 音频作音色/口型驱动＋文件参考）、一致性显式枚举条款、@Image/@Video/@Audio 绑定与 `<音效>` 点标记、编辑指令整改分级。分镜层与六视角质检两轨共用；机检 `--model` 分支就绪前 Wan 轨片段人工核数。触发语：Wan3.0、万相轨、换模型写提示词。
+
+## W17｜MiniMax H3 提示词轨（H3 结构化分支）
+
+适用：用户指定用 MiniMax H3（海螺 H3 / minimaxh3 / H3 结构）的提示词结构。主模块：[E27 H3 提示词分支](../../minimax-h3-adapter/SKILL.md)，官方原文在 [25 minimax H3官方skill/skills/](</Users/a1/work/3000课程21个skill/25 minimax H3官方skill/skills/>)（`h3-prompt-writing/SKILL.md`＋`references/base-en.txt`＋`references/ref-en.txt`，原文不改）。触发语：minimaxh3、H3 结构、海螺 H3、Ref2VA、T2VA/I2VA/FL2VA/L2VA。
+
+1. **判定模式**：只有文字 → T2VA；一张首帧图 → I2VA；首帧＋尾帧 → FL2VA（默认单镜头）；只有尾帧图 → L2VA；多模态全参考 → Ref2VA。官方输入上限：图 ≤9、视频 ≤3（每段 2–15 秒、总 ≤15 秒）、音频 ≤3（同上）、跨类型文件总数 ≤12。素材形态不明时按 I2VA 处理并在交付中写明所用模式。
+2. **先分镜再编译**：分镜字段含镜头编号与切点（`[Shot 1]` 无时间戳，其后 `At MM:SS.mmm` 严格递增且落在时长内）、构图与景别、主体与位置、环境与光线、动作与结果、运镜（类型＋幅度＋速度写成自然英文句）、同期声、说话人 ID 与台词原文、参考标签首次出现点、入口/出口状态。分镜层可沿用 S03 稳定资产 ID、S02 精细拆镜、E24 小墨视感、S18 动作因果、E25 微表情层；**只借镜头与表演字段，最终正文必须是 H3 结构**，不并列输出 S18/S21 模板。
+3. **时长口径**：H3 单条 4–15 秒。本目录短剧工作流默认 30 秒片段，两者冲突时在分镜阶段把 30 秒片段切成 ≤15 秒的 H3 条（如 15＋15），边界按剧情节拍落刀；用户已固定 30 秒边界时先说明单条 H3 无法覆盖，给出拆分方案再动手，不把 30 秒硬塞进 15 秒。
+4. **资产与参考标签映射**：`@CH/@SC/@PROP`（`CHAR_/LOC_`）→ `<Subject N>`；实际上传图/首帧/尾帧 → `<Picture N>`；参考视频 → `<Video N>`；参考音频 → `<Audio N>`（区分 `fully_copy` 与 `reference`）。标签一经定义全文一致。未上传的真实图片不得预写 `<Picture N>` 编号，只写资产代码与可见不变量并标注「参考图未上传」。
+5. **编译正文**：base 模式＝对齐指令行（仅 I2VA/FL2VA/L2VA）＋空行＋`integrated_multimodal_description` → `overall_soundscape` → `non_diegetic_music`；Ref2VA 模式＝`subject_definitions` → `summary` → `retention_analysis` → `detailed_description` → `overall_soundscape` → `non_diegetic_music`。台词/歌词/画面可见文字保留原语言并逐字照抄，其余正文英文。
+6. **机检＋人工评审**：跑 `python3 .agents/skills/minimax-h3-adapter/scripts/audit_h3_prompt.py <文件> --mode <模式> --duration <秒>`，机检只证明格式；剧情因果、表演可拍性、空间衔接、声音来源与口型仍按 agent 独立评审，不因机检通过而放行。
+
+**交接**：模式、成片时长与片段边界、资产 ID → `<Subject N>` 映射、实际上传素材 → `<Picture/Video/Audio N>` 映射、说话人 ID 表、每镜切点与台词归属、与既有 Seedance/Wan 轨的差异说明。
 
 ## W03｜演员表演与对白
 
@@ -239,4 +253,5 @@ W02人物资产分支、W04角色开发、W05写实转换和W07人像服饰需�
 | 已有逐镜表，把它转成Seedance 2.0细致提示词 | S02直接继承表 | 不重新拆镜 |
 | 从剧本中只拆人物和道具，不改剧情 | S03 | 最短资产提取路径 |
 | 生成白模替换的对应MD文件入口 | 指明E22仅有PDF并给真实路径 | 不虚构MD |
+| 这条提示词用 minimaxh3 的结构写，15 秒，给了首帧和尾帧 | W17：E27 判定 FL2VA→H3 分镜与切点→base 三字段正文 | 用户指定模型格式；模式由参考素材判定 |
 

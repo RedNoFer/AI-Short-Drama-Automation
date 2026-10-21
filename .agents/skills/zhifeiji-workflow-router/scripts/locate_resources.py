@@ -119,7 +119,7 @@ def verify(catalog, root):
     for rel in sorted(set(indexed_md) - source_md):
         errors.append(f"Indexed Markdown outside numbered collection: {rel}")
     for extra in catalog["extras"]:
-        if not source_path(root, extra["path"]).is_file():
+        if not source_path(root, extra["path"]).exists():
             errors.append(f"Missing supplementary source: {extra['path']}")
     result = {
         "ok": not errors, "resource_root": str(root), "bundles": len(bundles),

@@ -1,6 +1,6 @@
 # 源文件精确索引
 
-核对日期：2026-10-16。资源根目录：`/Users/a1/work/3000课程21个skill`。
+核对日期：2026-10-16；2026-10-20 新增 E25；2026-10-21 新增 E27（MiniMax H3 官方提示词 Skill）。资源根目录：`/Users/a1/work/3000课程21个skill`。
 覆盖 S01–S21 共 21 组资源、33 个实际存在的源 Markdown；附加资源与本地补充技能见下方索引。
 
 本文件由 catalog.json 生成。路径有变更时先更新机器索引，再使用 locate_resources.py --render-map 重新生成；不要只改显示链接。
@@ -540,27 +540,38 @@ MD 是创作规则/参考，TXT 中可能包含完整执行指令。PDF、示例
 - 产物：带景别、焦段、机位、运镜、画面、光影、色调、对白、人声与音效的逐镜文字分镜。
 - 边界：原版不计算镜头时长、不自动分段、不输出模型提示词；按预设时长在组合工作流的分镜规划阶段划出片段边界并给镜头归属，镜头时间另记，Seedance 2.5最终正文另用S18适配器。
 
+<a id="e25"></a>
+
 ## E25｜真人感微表情表演 Skill
 
-[真人感微表情 AI 视频 Skill](</Users/a1/work/3000课程21个skill/23 真人感微表情AI视频Skill/人物微表情表演skill.zip>)
+[真人感微表情表演 Skill](</Users/a1/work/3000课程21个skill/23 真人感微表情AI视频Skill/人物微表情表演skill.zip>)
 
 - 文件类型：skill-package（压缩包内 `micro-expression-video-generator/`，含 SKILL.md 与 7 份 references；另有单体整合版 `AI微表情拆解-拒绝塑料感与AI面瘫脸/seedance-prompt-单skill整合版本.zip`）。
 - 输入：角色图或剧本片段、情绪与关系状态；可指定镜头时长与表演强度。
 - 产物：分时微表情表演指导——130 个表演原型、情绪路线、70 条肌肉调度链、四拍结构（基线→泄露→压回→余态）、节奏密度规则与嘴部安全护栏，解决 AI 视频"假脸、僵硬、恐怖谷"。
 - 边界：只负责表演与情绪层，不做编剧、不做面部绑定与口型编辑、不做最终合成；`微表情提示词/` 目录（表情控制、人像光影、运镜、场景、服饰、风格、镜头语言）与既有 S10–S13 主题重叠，默认不重复引入，仅「即梦AI表情控制提示词(100套)」可作静态表情备查。
 
-<a id="e25"></a>
+<a id="e26"></a>
 
 ## E26｜剧本创作 Skill 合集（AI影视剧本 / 短剧系列 / 微电影）
 
-[剧本创作 skill 合集](</Users/a1/work/3000课程21个skill/24 剧本创作skill合集>)
+[剧本创作 Skill 合集（AI影视剧本 / 短剧系列 / 微电影）](</Users/a1/work/3000课程21个skill/24 剧本创作skill合集>)
 
 - 文件类型：source-markdown（3 份独立引擎）。
 - 输入：小说原文或故事大纲；用户指定的体裁与改编要求。
 - 产物：①`小说转AI影视剧本skill.md`——竖屏 AI 短剧生产制式，手术式改编（砍支线/并人物/排爽点/设计钩子链）、一个▲行＝一个可生成画面、单集 900–1200字/1–3 场/20–30 个▲行/15–20 条台词、爽点密度与每集钩子、九条铁律与质检清单；②`短剧系列剧本创作skill.md`——季级结构、五级钩子强度 L1–L5（每集≥L3、第1/6集≥L4、类型不连续两集重复）、人物微弧/中弧/大弧、配角独立视角集、余韵七技法与反俗套；③`微电影剧本创作skill.md`——人物驱动、六层人物档案与镜像对立、核心人物≤3 且禁超 4 个有台词角色、不可逆代价、结束在沉默中、反俗套。
 - 边界：与 S15 **互补不替代**——S15 仍提供多产物助手、忠实/重构双模式、长篇工作流与合规条款；本组只补体裁专属标准，不覆盖台词逐字、故事档案与合规要求。选用规则见工作流 `references/script-route-and-rubric.md`。
 
-<a id="e26"></a>
+<a id="e27"></a>
+
+## E27｜MiniMax H3 官方提示词 Skill（含本地 H3 分支）
+
+[MiniMax H3 官方提示词 Skill（含本地 H3 分支）](</Users/a1/work/3000课程21个skill/25 minimax H3官方skill/skills/h3-prompt-writing/SKILL.md>)
+
+- 文件类型：skill-package。
+- 输入：剧本或逐镜分镜表、稳定资产ID与已上传参考素材、目标成片时长（4–15秒）、生成模式（T2VA/I2VA/FL2VA/L2VA/Ref2VA）。
+- 产物：H3 结构化视频提示词：base 三字段（integrated_multimodal_description/overall_soundscape/non_diegetic_music）或 Ref2VA 六段式（subject_definitions/summary/retention_analysis/detailed_description/overall_soundscape/non_diegetic_music），附 H3 分镜与切点时间轴。
+- 边界：官方原文不改写；正文英文、台词歌词与画面可见文字保留原语言；官方 h3-prompt-writing 仅有英文版，8 个风格 Skill 面向 MiniMax Hub canvas 工作流；H3 单条 4–15 秒与本目录 30 秒片段口径冲突按 W17 在分镜阶段裁决；本目录资产ID映射为 <Subject N>，未上传图片不得预写 <Picture N>。
 
 ## 原配置 PDF 与示例媒体
 

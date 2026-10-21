@@ -1,6 +1,6 @@
 # AI 短剧自动化（AI-Short-Drama-Automation）
 
-ZHIFEIJI AI 影视创作资源库：21 组影视创作 Skill 源文件 + 三个工作流导航 Skill（资源路由、角色资产美工、短剧工作流）。
+ZHIFEIJI AI 影视创作资源库：21 组影视创作 Skill 源文件 + 四个工作流导航 Skill（资源路由、角色资产美工、短剧工作流、MiniMax H3 提示词）。
 
 仓库地址：<https://github.com/RedNoFer/AI-Short-Drama-Automation>（公开）
 
@@ -9,8 +9,8 @@ ZHIFEIJI AI 影视创作资源库：21 组影视创作 Skill 源文件 + 三个�
 | 路径 | 内容 |
 | --- | --- |
 | `AGENTS.md` | 本目录协作规范（入口） |
-| `.agents/skills/` | 导航与工作流 Skill：`zhifeiji-workflow-router`、`character-asset-prompts`、`short-drama-workflow` |
-| `01 ~ 25` | 原始影视创作资源（角色捏人、分镜、资产提取、出图、构图、Seedance、机甲、正反打、剧本诊断、打斗、真人感微表情、minimax H3 官方 skill 等） |
+| `.agents/skills/` | 导航与工作流 Skill：`zhifeiji-workflow-router`、`character-asset-prompts`、`short-drama-workflow`、`minimax-h3-adapter` |
+| `01 ~ 25` | 原始影视创作资源（角色捏人、分镜、资产提取、出图、构图、Seedance、机甲、正反打、剧本诊断、打斗、真人感微表情、minimax H3 官方 skill 等）；`25 minimax H3官方skill/` 为官方原样副本，来源见 `25 minimax H3官方skill/来源说明.md` |
 | `补充资源/` | 补充导入的源文件（小墨个人分镜 SKILL 6.3 原版、Wan3.0 手册学习笔记等） |
 | `Wan3.0视频创作者手册.md` | Wan3.0 视频创作参考手册 |
 | `ZHIFEIJI｜白模预演固定替换模板_v1.0.pdf` | 白模预演模板 |
@@ -18,6 +18,8 @@ ZHIFEIJI AI 影视创作资源库：21 组影视创作 Skill 源文件 + 三个�
 ## 使用方式
 
 先读 `AGENTS.md`，再按需进入 `.agents/skills/zhifeiji-workflow-router/SKILL.md` 选择对应源文件。
+
+需要 MiniMax H3 结构的视频提示词时，走 `.agents/skills/minimax-h3-adapter/SKILL.md`（组合流程 W17）。
 
 ## 下载与克隆
 

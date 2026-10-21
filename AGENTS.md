@@ -30,3 +30,10 @@
 ## 小墨 6.3 分镜补充
 
 用户指定小墨个人分镜 Skill 6.3 时，读取[原版文件](补充资源/小墨个人分镜SKILL6.3（豪华升级版）.md)与导航中的 E24；原版文件保持不改。独立执行 W14 时按用户给的片段时长、画幅和清晰度；从短剧工作流 Skill 进入时，先由系统按小说剧情和表演估时提出并记录规格，再按[W14 组合流程](.agents/skills/zhifeiji-workflow-router/references/workflows.md#w14)执行。片段边界与镜头归属随分镜规划确定，用户已指定的边界直接沿用；时间码另记且只用整数秒，最终正文由 S18 的 Seedance 2.5 适配器生成。保留小墨原版的短剧视感和空间切镜规则。
+
+## MiniMax H3 提示词分支
+
+用户要求使用 MiniMax H3（海螺 H3 / H3 结构 / minimaxh3）的提示词结构时，读取[H3 提示词分支](.agents/skills/minimax-h3-adapter/SKILL.md)与导航中的 E27，并按[W17 组合流程](.agents/skills/zhifeiji-workflow-router/references/workflows.md#w17)执行：先按 H3 口径做分镜与切点时间轴，再编译成官方 base 三字段或 Ref2VA 六段式正文。官方原文原样保存在`25 minimax H3官方skill/skills/`（`h3-prompt-writing/SKILL.md`、`references/base-en.txt`、`references/ref-en.txt`），不得改写；本地只做路由、资产映射（`@CH/@SC/@PROP` → `<Subject N>`）与冲突裁决。
+
+H3 单条成片 4–15 秒，与本目录短剧工作流默认 30 秒片段冲突时在分镜阶段重划边界，不把 30 秒硬塞进单条；H3 轨不套用 S18 的 2000/3000/4500 字符档，最终正文只交付一套 H3 结构，不与 Seedance/Wan 模板并列。未上传的真实图片不得预写 `<Picture N>`。8 个官方风格 Skill 面向 MiniMax Hub canvas 工作流，用户点名时才读取。
+

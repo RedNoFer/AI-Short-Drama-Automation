@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "resource_root": "/Users/a1/work/3000课程21个skill",
-  "verified_on": "2026-10-16；2026-10-20 新增 E25",
+  "verified_on": "2026-10-16；2026-10-20 新增 E25；2026-10-21 新增 E27（MiniMax H3 官方提示词 Skill）",
   "groups": [
     {
       "id": "A",
@@ -771,10 +771,10 @@
       "id": "E25",
       "name": "真人感微表情表演 Skill",
       "path": "23 真人感微表情AI视频Skill/人物微表情表演skill.zip",
-      "type": "skill-package",
+      "type": "skill-package（压缩包内 `micro-expression-video-generator/`，含 SKILL.md 与 7 份 references；另有单体整合版 `AI微表情拆解-拒绝塑料感与AI面瘫脸/seedance-prompt-单skill整合版本.zip`）",
       "input": "角色图或剧本片段、情绪与关系状态；可指定镜头时长与表演强度",
-      "output": "分时微表情表演指导：表演原型(130)、情绪路线、肌肉调度链(70)、四拍结构(基线→泄露→压回→余态)、节奏密度与嘴部安全护栏",
-      "boundary": "只负责表演与情绪层，不做编剧、不做面部绑定与口型编辑、不做合成；主文件在压缩包内 micro-expression-video-generator/，另有 seedance-prompt-master 单体整合版；微表情提示词/ 目录与既有 S10-S13 主题重叠，默认不重复引入",
+      "output": "分时微表情表演指导——130 个表演原型、情绪路线、70 条肌肉调度链、四拍结构（基线→泄露→压回→余态）、节奏密度规则与嘴部安全护栏，解决 AI 视频\"假脸、僵硬、恐怖谷\"",
+      "boundary": "只负责表演与情绪层，不做编剧、不做面部绑定与口型编辑、不做最终合成；`微表情提示词/` 目录（表情控制、人像光影、运镜、场景、服饰、风格、镜头语言）与既有 S10–S13 主题重叠，默认不重复引入，仅「即梦AI表情控制提示词(100套)」可作静态表情备查",
       "files": [
         {
           "path": "23 真人感微表情AI视频Skill/人物微表情表演skill.zip",
@@ -793,12 +793,12 @@
     },
     {
       "id": "E26",
-      "name": "剧本创作 skill 合集（AI影视剧本/短剧系列/微电影）",
+      "name": "剧本创作 Skill 合集（AI影视剧本 / 短剧系列 / 微电影）",
       "path": "24 剧本创作skill合集",
-      "type": "source-markdown",
+      "type": "source-markdown（3 份独立引擎）",
       "input": "小说原文或故事大纲；用户指定的体裁与改编要求",
-      "output": "三类体裁剧本引擎：AI影视剧本制式（手术式改编+▲行制式+体量口径+爽点/钩子）、短剧系列（季级结构+五级钩子强度L1-L5+三尺度人物弧+余韵+反俗套）、微电影（六层人物档案+镜像对立+不可逆代价+反俗套）",
-      "boundary": "与 S15 互补不替代：S15 提供多产物助手、忠实/重构双模式与合规条款，本组只补体裁专属标准；不覆盖 S15 的台词逐字、故事档案与合规要求",
+      "output": "①`小说转AI影视剧本skill.md`——竖屏 AI 短剧生产制式，手术式改编（砍支线/并人物/排爽点/设计钩子链）、一个▲行＝一个可生成画面、单集 900–1200字/1–3 场/20–30 个▲行/15–20 条台词、爽点密度与每集钩子、九条铁律与质检清单；②`短剧系列剧本创作skill.md`——季级结构、五级钩子强度 L1–L5（每集≥L3、第1/6集≥L4、类型不连续两集重复）、人物微弧/中弧/大弧、配角独立视角集、余韵七技法与反俗套；③`微电影剧本创作skill.md`——人物驱动、六层人物档案与镜像对立、核心人物≤3 且禁超 4 个有台词角色、不可逆代价、结束在沉默中、反俗套",
+      "boundary": "与 S15 **互补不替代**——S15 仍提供多产物助手、忠实/重构双模式、长篇工作流与合规条款；本组只补体裁专属标准，不覆盖台词逐字、故事档案与合规要求。选用规则见工作流 `references/script-route-and-rubric.md`",
       "files": [
         {
           "path": "24 剧本创作skill合集/小说转AI影视剧本skill.md",
@@ -820,6 +820,48 @@
         }
       ],
       "read_when": "阶段1选择体裁路线并按该路线的专属标准评估；路线层检查项接入 story-evaluation 与 prompt-review"
+    },
+    {
+      "id": "E27",
+      "name": "MiniMax H3 官方提示词 Skill（含本地 H3 分支）",
+      "path": "25 minimax H3官方skill/skills/h3-prompt-writing/SKILL.md",
+      "type": "skill-package",
+      "input": "剧本或逐镜分镜表、稳定资产ID与已上传参考素材、目标成片时长（4–15秒）、生成模式（T2VA/I2VA/FL2VA/L2VA/Ref2VA）",
+      "output": "H3 结构化视频提示词：base 三字段（integrated_multimodal_description/overall_soundscape/non_diegetic_music）或 Ref2VA 六段式（subject_definitions/summary/retention_analysis/detailed_description/overall_soundscape/non_diegetic_music），附 H3 分镜与切点时间轴",
+      "boundary": "官方原文不改写；正文英文、台词歌词与画面可见文字保留原语言；官方 h3-prompt-writing 仅有英文版，8 个风格 Skill 面向 MiniMax Hub canvas 工作流；H3 单条 4–15 秒与本目录 30 秒片段口径冲突按 W17 在分镜阶段裁决；本目录资产ID映射为 <Subject N>，未上传图片不得预写 <Picture N>",
+      "files": [
+        {
+          "path": "25 minimax H3官方skill/skills/h3-prompt-writing/SKILL.md",
+          "role": "main",
+          "label": "官方 H3 提示词 Skill 主文件",
+          "read_when": "进入 H3 分支时先读"
+        },
+        {
+          "path": "25 minimax H3官方skill/skills/h3-prompt-writing/references/base-en.txt",
+          "role": "main",
+          "label": "base 模式指南（T2VA/I2VA/FL2VA/L2VA）",
+          "read_when": "编译 base 三字段与分镜时间轴时"
+        },
+        {
+          "path": "25 minimax H3官方skill/skills/h3-prompt-writing/references/ref-en.txt",
+          "role": "main",
+          "label": "全参考模式指南（Ref2VA 六段式）",
+          "read_when": "全参考改写与参考标签规则"
+        },
+        {
+          "path": ".agents/skills/minimax-h3-adapter/SKILL.md",
+          "role": "route",
+          "label": "本地 H3 提示词分支（路由、映射与冲突裁决）",
+          "read_when": "用户点名 minimaxh3 / H3 结构时"
+        },
+        {
+          "path": ".agents/skills/minimax-h3-adapter/scripts/audit_h3_prompt.py",
+          "role": "tool",
+          "label": "H3 提示词结构机检脚本",
+          "read_when": "编译后机检"
+        }
+      ],
+      "read_when": "用户指定 MiniMax H3 / 海螺 H3 / H3 提示词结构时的模式判定、分镜时间轴与最终提示词编译"
     }
   ]
 }
