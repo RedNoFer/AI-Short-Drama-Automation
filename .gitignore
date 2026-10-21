@@ -12,6 +12,9 @@
 outputs/
 视频拆解_*/
 
+# 演示视频（体积大，不进仓库；改用 GitHub Release 附件分发）
+*.mp4
+
 # 临时文件
 *.tmp
 *.bak
