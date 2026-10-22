@@ -1,5 +1,5 @@
 {
-  "policy_version": 19,
+  "policy_version": 22,
   "execution": {
     "model": "isolated_stage_subagents",
     "orchestrator_holds": [
@@ -32,12 +32,12 @@
         "hard_cuts": "5-10（镜头6-11；小墨6.3本身不设每30秒切镜数，区间为工作流分段口径，按题材在带内选点）",
         "storyboard_source": "分镜层按E24小墨Skill6.3重排并逐镜自查：固定镜头≤10%且禁连续固定（例外仅重锤凝固+留白长镜）、常态镜头以极缓慢推/横移/漂移替代绝对静止、常规镜头≤30%、侧45°为叙事主力、景别不连三近景、焦段≥4种、机位角度≥6种、台词重锤后接更松景别留白镜、逐镜标注景别/焦段/机位/运镜/景深；重排后再经S18适配器编译",
         "review_recheck": "阶段4逐条评审与阶段5独立复核都必须按E24原版把分镜视感复读检查一遍，不合格回阶段3重排",
-        "defined": "2026-10-19 用户定义并设为默认"
+        "defined": "2026-10-19 用户定义并设为默认；2026-10-22 全项目硬切带统一为 5-10，字符上限按档（第二档 3000）"
       },
       "tier1_standard": {
         "label": "第一档（紧凑，可选）",
         "prompt_max_chars": 2000,
-        "hard_cuts": "5-7",
+        "hard_cuts": "5-10",
         "storyboard_source": "分镜沿用既有逐镜表，按S18适配器编译纪律写提示词",
         "note": "兼容旧交付包与接口更严时的紧凑路线；旧包按此档登记兼容豁免"
       },
@@ -46,15 +46,16 @@
         "prompt_max_chars": 4500,
         "target_chars": "3200-4300；上限不是配额，写不满不硬凑（防稀释铁律）",
         "shots": "7-11（在全局6-11带内偏多镜端；A级一镜到底打斗段豁免镜数带，走拍点制）",
-        "hard_cuts": "6-10",
+        "hard_cuts": "6-10（满配端，落在全局 5-10 带内）",
         "storyboard_source": "小墨6.3满配密度：每镜五要素自包含（①空间与前景框架②光行为③表演三通道完整微表情链④镜头语言（景别/焦段/机位/运镜速度/景深）⑤声音设计），逐镜表同步满配字段（空间锚点名/光影/色调），经S18编译为自然语言整句",
         "budget_rule": "字数提升只为演绎剧情质量，禁止废话：预算优先级＝表演与剧情演绎＞光影空间＞镜头语言＞声音设计；禁止形容词堆叠、同义反复、文学抒情填充、参考图已承载的身份/服装/场景结构描述；每镜必须含推进剧情的新信息或表演节拍，两镜信息重复即违规；每镜自包含（人物直呼其名、不依赖上镜代词、切点与台词前置）",
         "review_addendum": "六视角不变，演绎密度审查并入表演视角：逐镜查『删掉此镜信息是否丢失』，无信息增量的镜头判违规",
         "status": "规范已定义（2026-10-19 用户定义），内容重排未启动；全量采用前须样片对比证据（建议 E02-SH01/E10-SH07 双档对照），试点通过方可铺开",
-        "validator_note": "validate_compact_package.py 需补 --tier 参数后才可按本档机检（4500/7-11镜/硬切6-10）；当前机检按第二档口径"
+        "validator_note": "validate_compact_package.py --tier tier3_full_xiaomo63 已可按本档机检（4500 字符/硬切 6-10）；未指定 --tier 时按第二档 3000/5-10"
       }
     },
-    "validator_note": "validate_compact_package.py 读 video.prompt_max_chars（第二档3000）与 hard_cuts_min/max（5-10，即镜头6-11）；片段标题含「一镜到底」走 fight 分支（拍点行、行内禁硬切、豁免硬切计数、字符上限取 tier3 4500）；--tier 按档参数待补"
+    "validator_note": "validate_compact_package.py 读 video.prompt_max_chars（第二档3000）与 hard_cuts_min/max（5-10，即镜头6-11）；片段标题含「一镜到底」走 fight 分支（拍点行、行内禁硬切、豁免硬切计数、字符上限取 tier3 4500）；--tier 已实现（tier1_standard/tier2_xiaomo63/tier3_full_xiaomo63）；--model 已实现 seedance25/wan30/h3",
+    "hard_cuts_note": "全项目统一 5-10 次硬切（2026-10-22 用户口径）：Seedance 2.5 轨与 Wan3.0 轨同用此带；H3 轨因单条 ≤15 秒另设 0-6 带，见 model_profiles.h3"
   },
   "model_profiles": {
     "seedance25": {
@@ -108,6 +109,32 @@
         "forbid_five_person_dialogue": true,
         "reflection_requires_fantasy_tag": true
       }
+    },
+    "h3": {
+      "label": "MiniMax H3 轨（官方结构化提示词）",
+      "spec_source": "MiniMax-AI/MiniMax-H3 官方仓库 skills/h3-prompt-writing（base-en.txt / ref-en.txt）",
+      "time_granularity": "毫秒（官方 At MM:SS.mmm 切点写法）",
+      "prompt_max_chars": 6000,
+      "prompt_chars_note": "官方未设提示词字符上限；官方生产范例实测 2500–4540 字符（378–723 词，见上游 README 的 case-T2VA/case-I2VA/case-Ref2VA）。本地硬顶取 6000（高于官方最长范例并留余量），低于 1200 字符提醒过简。真正的官方口径是词数密度：Ref2VA 的 detailed_description 生成类建议 350–500 词，且不得机械凑词数。2026-10-22 上调（原 4000 为本地保守值，会误杀官方 I2VA 范例）",
+      "detailed_description_words": [
+        350,
+        500
+      ],
+      "hard_cuts_min": 0,
+      "hard_cuts_max": 6,
+      "hard_cuts_note": "单条 ≤15 秒，切点密度按可执行密度给；FL2VA 官方默认单镜（0 切）",
+      "field_structure": "base：integrated_multimodal_description → overall_soundscape → non_diegetic_music；ref2va：subject_definitions → summary → retention_analysis → detailed_description → overall_soundscape → non_diegetic_music",
+      "package_carrier": "精简制作包中 H3 轨正文原样写入 #### 视频提示词 块，不写四段结构（【参考】/【公共总规范】/【时间轴】/【收尾】）与「硬切，」时间行",
+      "asset_mapping": "@CH/@SC/@PROP（CHAR_/LOC_）→ <Subject N>；实际上传图 → <Picture N>；视频 → <Video N>；音频 → <Audio N>；映射表存内部档案，未上传图片不得预写编号",
+      "validator_note": "validate_compact_package.py --model h3 已实现：字段顺序、切点递增与时长上限、说话人 ID、<d> 语言标签、参考标签一致性与 subject_definitions 定义、soundscape/music 句数、资产→标签覆盖；--tier 不适用于本轨",
+      "prompt_min_chars": 1200,
+      "detailed_description_words_note": "官方口径：生成类 normally 350–500 English words；对白密集内容优先保证完整口语时间线，不机械凑数；编辑类按素材复杂度缩放",
+      "official_clip_duration_min": 4,
+      "official_clip_duration_max": 15,
+      "official_clip_note": "官方规格「Output duration: 4–15 seconds」是**模型单条输出上限**，不是提示词字段的写法限制；应用把一条片段拆成多条送模型时，由应用负责分段",
+      "package_segment_mode": "app",
+      "package_segment_note": "app（默认）：精简制作包的片段时长沿用目标应用的片段单位（默认 30 秒），不做额外拆条流程；正文按该片段的完整时间轴用 H3 固定格式写。official：片段时长强制 4–15 秒（用于应用只接受单条 H3 输出时）。两种模式由 --h3-segments app|official 切换",
+      "asset_reference_spec": ".agents/skills/minimax-h3-adapter/references/asset-reference.md（<Subject N>/<Picture N>/<Video N>/<Audio N> 编号与登记规则）"
     }
   },
   "fight_mode": {

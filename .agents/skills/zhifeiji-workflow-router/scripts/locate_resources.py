@@ -26,16 +26,19 @@ def normalize_id(value):
     cleaned = value.strip().upper()
     if cleaned.startswith("S"):
         cleaned = cleaned[1:]
-    if not cleaned.isdigit() or not 1 <= int(cleaned) <= 21:
-        raise ValueError(f"Invalid bundle ID: {value}; use 01-21 or S01-S21")
-    return f"S{int(cleaned):02d}"
+    if cleaned.isdigit() and 1 <= int(cleaned) <= 21:
+        return f"S{int(cleaned):02d}"
+    if re.fullmatch(r"E\d{2}", cleaned):
+        return cleaned
+    raise ValueError(f"Invalid bundle ID: {value}; use 01-21 (S01-S21) or E22-E27")
 
 
 def list_bundles(catalog):
-    return "\n".join(
-        f"{b['id']} [{b['group']}] {b['name']} — {b['select_when']}"
-        for b in catalog["bundles"]
-    )
+    lines = [f"{b['id']} [{b['group']}] {b['name']} — {b['select_when']}"
+             for b in catalog["bundles"]]
+    lines.extend(f"{e['id']} [附加] {e['name']} — {e.get('read_when', e['output'])}"
+                 for e in catalog["extras"])
+    return "\n".join(lines)
 
 
 def dependency_status(root, dep):
@@ -47,6 +50,7 @@ def dependency_status(root, dep):
 
 def resolve_bundles(catalog, root, identifiers):
     by_id = {b["id"]: b for b in catalog["bundles"]}
+    extras_by_id = {e["id"]: e for e in catalog["extras"]}
     output = []
     seen = set()
     for raw in identifiers:
@@ -54,6 +58,29 @@ def resolve_bundles(catalog, root, identifiers):
         if key in seen:
             continue
         seen.add(key)
+        if key.startswith("E"):
+            extra = extras_by_id.get(key)
+            if extra is None:
+                raise ValueError(f"Unknown supplementary ID: {raw}")
+            main_path = source_path(root, extra["path"])
+            files = [{
+                "kind": "extra", "role": "main", "label": extra["name"],
+                "path": str(main_path), "exists": main_path.exists(),
+                "read_when": extra.get("read_when", ""),
+            }]
+            for entry in extra.get("files", []):
+                path = source_path(root, entry["path"])
+                files.append({
+                    "kind": "extra", "role": entry["role"], "label": entry["label"],
+                    "path": str(path), "exists": path.is_file(),
+                    "read_when": entry["read_when"],
+                })
+            output.append({
+                "id": key, "name": extra["name"], "input": extra["input"],
+                "output": extra["output"], "boundary": extra["boundary"],
+                "files": files, "dependencies": [],
+            })
+            continue
         b = by_id[key]
         files = []
         for kind, values in (("markdown", b["markdown"]), ("companion", b["companions"])):
@@ -121,6 +148,9 @@ def verify(catalog, root):
     for extra in catalog["extras"]:
         if not source_path(root, extra["path"]).exists():
             errors.append(f"Missing supplementary source: {extra['path']}")
+        for entry in extra.get("files", []):
+            if not source_path(root, entry["path"]).is_file():
+                errors.append(f"Missing supplementary file: {entry['path']}")
     result = {
         "ok": not errors, "resource_root": str(root), "bundles": len(bundles),
         "indexed_source_markdown": len(indexed_md),
@@ -198,6 +228,13 @@ def render_map(catalog, root):
             f"- 输入：{e['input']}。", f"- 产物：{e['output']}。",
             f"- 边界：{e['boundary']}。",
         ])
+        if e.get("files"):
+            lines.extend(["", "| 文件 | 职责 | 读取时机 |", "|---|---|---|"])
+            for entry in e["files"]:
+                path = source_path(root, entry["path"])
+                lines.append(
+                    f"| {md_link(path.name, path)} | {entry['role']}：{entry['label']} | {entry['read_when']} |"
+                )
     lines.extend([
         "", "## 原配置 PDF 与示例媒体", "",
         "编号目录中的自定义GPT配置流程.pdf有18份内容相同的副本；只有配置自定义GPT时才需要阅读其中一份。",

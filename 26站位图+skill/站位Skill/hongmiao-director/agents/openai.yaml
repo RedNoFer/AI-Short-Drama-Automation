@@ -1,0 +1,4 @@
+interface:
+  display_name: "红喵导演台"
+  short_description: "生成导演台场景、人物动作、七类武器绑定与完整镜头数据"
+  default_prompt: "Use $hongmiao-director to turn my scene idea into valid SCENE_JSON with suitable poses, weapons, blocking, and camera design."

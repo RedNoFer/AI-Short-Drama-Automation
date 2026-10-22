@@ -15,7 +15,7 @@
 | R5 | 上下文衔接：镜/片段/集的站位、视线、道具状态链、场景光向、情绪话头；收尾写下一片段入口 | compact-import.md（第5条） | SKILL（阶段3/4/5、阶段门）、prompt-review（衔接维度+空间专项）、story-evaluation、runtime-planning、multi-agent-execution | 无（语义评审） | SPACE-01、SYNC-01 |
 | R6 | 评审机制：一次对抗性独立评审（五视角、带证据），回滚后全量复验；独立子任务、记录模板、4 次预算、升级用户 | prompt-review.md | SKILL（阶段门/1/5/速度）、execution-checklist（6）、compact-import、delivery-contract、multi-agent-execution、policy.review、story-evaluation | 无（流程闸） | PROC-02 |
 | R7 | 小说原文块逐字来自用户源文件（支持 docx）；差异须授权登记；部分章节须声明范围 | compact-import.md | SKILL 阶段5、execution-checklist（阶段5）、prompt-review（上游交接）、project-brief（源文件登记）、multi-agent-execution | validate_novel_coverage.py（命中≥0.99/覆盖≥0.95） | — |
-| R8 | 30 秒片段、6–8 镜、5–7 硬切、整数秒连续时间轴、正文≤2000 字符 | runtime-planning.md；数值在 policy.video | SKILL（输入/阶段3/边界）、compact-import、prompt-review、validation-contract、delivery-contract | validate_compact_package（时间轴/硬切/字符） | PROC-02 |
+| R8 | 30 秒片段、6–11 镜、5–10 硬切、整数秒连续时间轴、正文≤3000 字符（按档 2000/3000/4500） | runtime-planning.md；数值在 policy.video | SKILL（输入/阶段3/边界）、compact-import、prompt-review、validation-contract、delivery-contract | validate_compact_package（时间轴/硬切/字符） | PROC-02 |
 | R9 | 资产版式：角色 16:9 白底四视图、场景 16:9 单张全景；图片提示词不带声音 | asset-image-production.md；policy.assets | SKILL 阶段2、compact-import、character-asset-prompts 技能 | validate_compact_package（16:9/四视图/全景字样） | — |
 | R10 | 不预写 @Image/@图片 编号；绑定代码=【参考】代码；每片段至多一场景 | compact-import.md | SKILL 阶段4、prompt-review、validation-contract | validate_compact_package（@Image 拦截、绑定/参考/场景数校验） | SYNC-01 |
 | R11 | 阶段门：必读白名单、内部档案落盘、执行账一行结论，禁跳读/合并阶段/记忆引用 | execution-checklist.md | SKILL（阶段门）、multi-agent-execution（派单与放行）、project-brief | 无（流程闸） | PROC-01 |
@@ -32,12 +32,13 @@
 | R22 | **Wan 反例硬规则**：静物≤2s、空镜≤2.5s、删极缓慢、禁三人以上人物群排、每段不看镜头、对话单镜≤6s、道具时序、文字物理规避、冷灰光、公共总规范≤20% | wan30-prompt-spec.md §十一★；failure-cases.md WAN30-01 | wan30-adapter §4.3/§6/§11、compact-import、prompt-review | audit_wan30_antipatterns.py＋validate_compact_package --model wan30 | WAN30-01 |
 | R23 | **人物分身预防**：参考图单人、每镜≤3张正脸、4+人拆镜、五人全景≤2s且无台词、人数锁定句、普通反射不映人、幻境复刻标 `幻境层` | wan30-prompt-spec.md §十一·人物分身专项★；failure-cases.md WAN30-02 | wan30-adapter §4.3/§11/§12、asset-image-production、prompt-review、SKILL 阶段2/4 | audit_wan30_antipatterns.py（identity_overload/five_person_*/group_dialogue_overload/group_shot_budget/reflection_ambiguity） | WAN30-02 |
 | R24 | **反例投喂契约**：最小信息集（提示词全文/生成参数/成片/偏差/期望/修正版/入口）、批量目录约定、五步处理（归类合并→偏差/原因/修订/验证分栏→接入检查点→回写规范并逐项核对→回执对照表）、边界（单次生成错误≠提示词缺陷、不固化个案配置、复盘不启动生成） | failure-intake-contract.md ★ | failure-cases（接收与更新）、SKILL（反例回收）、rule-map | 无（流程闸） | 全部案例类 |
+| R25 | **MiniMax H3 轨**：官方结构化正文（base 三字段／Ref2VA 六段式）、片段时长沿用应用单位（官方 4–15 秒为模型单条输出上限）、毫秒切点 `At MM:SS.mmm`、首镜无时间戳、资产→`<Subject N>`/`<Picture N>`/`<Video N>`/`<Audio N>` 标签、台词 `<d>[语言]…</d>`＋`(S1)`、不写四段结构与「硬切，」行、正文硬顶 6000 字符/过简提醒 1200（官方未设字符上限，官方生产范例 2500–4540 字符；Ref2VA 的 detailed_description 按官方 350–500 词）、硬切带 0–6 | 官方原文 `25 minimax H3官方skill/skills/h3-prompt-writing/`（不改写）；本地适配 `.agents/skills/minimax-h3-adapter/SKILL.md`★；compact-import.md「MiniMax H3 轨」节；素材引用规则 `.agents/skills/minimax-h3-adapter/references/asset-reference.md`；数值 policy.model_profiles.h3 | SKILL（阶段3/4/5 三轨）、workflows.md W17、execution-checklist（阶段3/4/5）、prompt-review、project-brief、runtime-planning、story-evaluation、handoff-template、asset-image-production（参考素材前置）、voice-and-dubbing、micro-expression-layer、fight-router、validation-contract | validate_compact_package --model h3（回归 scripts/tests/test_h3_validator.py）；audit_h3_prompt.py（回归 .agents/skills/minimax-h3-adapter/scripts/tests/test_audit_h3_prompt.py） | — |
 
 ## 文件职责速查（改文件时先判断它是不是定义文件）
 
 - `SKILL.md`：流程总纲，只写阶段顺序与原则，规则细节链接到定义文件；避免在此复制规则全文（复制=未来漂移点）。
 - `policy.json`：全部机器可读默认值；改默认值升版本号。
-- `references/*`：R1–R23 的定义与执行细则。
+- `references/*`：R1–R25 的定义与执行细则。
 - `scripts/`：确定性检查；新硬规则先问能否机检，能就进脚本并补 `scripts/tests/` 正反用例。
 - `assets/drama-compact-package-template.md`：导入端结构模板，注释只写格式不写项目值。
 - `agents/openai.yaml`：入口默认提示词，只做引导，不承载规则。

@@ -13,6 +13,7 @@ import argparse
 import json
 import re
 import sys
+from pathlib import Path
 
 BASE_FIELDS = ["integrated_multimodal_description", "overall_soundscape", "non_diegetic_music"]
 REF_FIELDS = [
@@ -214,7 +215,7 @@ def check_duration(duration, body, errors, warnings):
         errors.append(f"成片时长 {duration}s 超出 H3 的 4–15 秒范围")
 
 
-def check_body_quality(body, errors, warnings):
+def check_body_quality(body, errors, warnings, policy=None):
     if ABSTRACT.search(body):
         warnings.append("出现抽象形容词（cinematic/beautiful/8k 等），官方要求改写为具体视听细节")
     for token in ("【参数】", "720p", "1080p", "2K", "4K"):
@@ -222,7 +223,20 @@ def check_body_quality(body, errors, warnings):
             warnings.append(f"正文出现生成参数 `{token}`，按本目录约定参数由应用设置承载")
 
 
-def audit(text, mode, duration):
+def check_length(prompt, policy, errors, warnings):
+    """官方未设提示词字符上限；本地按官方生产范例量级给硬顶与过简线。"""
+    profile = (policy or {}).get("model_profiles", {}).get("h3", {})
+    hard = profile.get("prompt_max_chars", 6000)
+    low = profile.get("prompt_min_chars", 1200)
+    if len(prompt) > hard:
+        errors.append(f"提示词 {len(prompt)} 字符，超过本项目 H3 硬顶 {hard}"
+                      f"（官方未设字符上限；官方生产范例 2500–4540 字符）")
+    elif len(prompt) < low:
+        warnings.append(f"提示词只有 {len(prompt)} 字符，低于 {low}；"
+                        f"官方生产 prompt 普遍 2500+ 字符（教学示例约 900），过简会削弱画面与声音细节")
+
+
+def audit(text, mode, duration, policy=None):
     errors, warnings = [], []
     family, _ = MODES[mode]
     fields = REF_FIELDS if family == "ref2va" else BASE_FIELDS
@@ -246,6 +260,7 @@ def audit(text, mode, duration):
     check_sound_fields(text, errors, warnings)
     check_duration(duration, body, errors, warnings)
     check_body_quality(body, errors, warnings)
+    check_length(text, policy, errors, warnings)
     return {
         "ok": not errors,
         "mode": mode,
@@ -260,13 +275,22 @@ def main():
     parser.add_argument("path", help="提示词文件（.md 或 .txt）")
     parser.add_argument("--mode", default="base", choices=sorted(MODES), help="H3 生成模式")
     parser.add_argument("--duration", type=float, default=None, help="成片时长（4–15 秒）")
+    parser.add_argument("--policy", type=Path, default=None,
+                        help="项目策略 JSON（读取 H3 字符口径；缺省用内置值）")
     args = parser.parse_args()
     try:
         text = open(args.path, encoding="utf-8").read()
     except OSError as exc:
         print(f"无法读取文件：{exc}", file=sys.stderr)
         return 2
-    result = audit(text, args.mode, args.duration)
+    policy = None
+    if args.policy and args.policy.is_file():
+        try:
+            policy = json.loads(args.policy.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            print(f"无法读取策略文件：{exc}", file=sys.stderr)
+            return 2
+    result = audit(text, args.mode, args.duration, policy)
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0 if result["ok"] else 1
 

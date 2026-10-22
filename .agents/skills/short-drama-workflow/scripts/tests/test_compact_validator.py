@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import sys
 import unittest
 from pathlib import Path
@@ -222,6 +223,64 @@ class CompactValidatorTests(unittest.TestCase):
         result = validator.validate(make_package(rows=watch), POLICY)
         self.assertTrue(result["ok"], result["errors"])
         self.assertTrue(any("需判定" in w for w in result.get("warnings", [])))
+
+def make_sequel(*, ep: str = "E02", char_name: str = "阿泽", char_code: str = "CHAR_01",
+                char_prompt: str | None = None, extra_asset: str = "") -> str:
+    """Build a sequel package that is checked against a baseline package."""
+    header = HEADER
+    if char_name != "阿泽" or char_code != "CHAR_01":
+        header = header.replace("### 角色 CHAR_01｜阿泽", f"### 角色 {char_code}｜{char_name}")
+    if char_prompt is not None:
+        header = re.sub(
+            r"(### 角色 CHAR_01｜阿泽\n\n#### 图片提示词\n\n```text\n).*?(\n```)",
+            lambda match: match.group(1) + char_prompt + match.group(2),
+            header, flags=re.S)
+    if extra_asset:
+        header = header.replace("## 固定资产\n", "## 固定资产\n\n" + extra_asset, 1)
+    episode = EPISODE_TMPL.format(ep=ep, sh="SH01", n=2, lock=LOCK, rows=GOOD_ROWS,
+                                   suffix="", dur=30, pad="")
+    return header + episode
+
+
+class SequelValidatorTests(unittest.TestCase):
+    """续集校验：集代码归属、资产名称对齐与代码冲突。"""
+
+    def test_clean_sequel_passes(self):
+        baseline = make_package()
+        result = validator.validate(make_sequel(), POLICY, baseline=baseline)
+        self.assertTrue(result["ok"], result["errors"])
+
+    def test_sequel_reusing_existing_episode_code_rejected(self):
+        baseline = make_package()
+        result = validator.validate(make_sequel(ep="E01"), POLICY, baseline=baseline)
+        self.assertFalse(result["ok"])
+        self.assertTrue(any("整集替换" in e for e in result["errors"]))
+
+    def test_sequel_renamed_asset_rejected(self):
+        baseline = make_package()
+        result = validator.validate(make_sequel(char_name="阿泽（续集）"), POLICY, baseline=baseline)
+        self.assertFalse(result["ok"])
+        self.assertTrue(any("名称须与项目已有资产逐字一致" in e for e in result["errors"]))
+
+    def test_sequel_same_name_new_code_rejected(self):
+        baseline = make_package()
+        clone = ("### 角色 CHAR_09｜阿泽\n\n#### 图片提示词\n\n"
+                 "```text\n生成16:9横版白底角色四视图设定图。\n```\n\n")
+        result = validator.validate(make_sequel(extra_asset=clone), POLICY, baseline=baseline)
+        self.assertFalse(result["ok"])
+        self.assertTrue(any("请沿用 CHAR_01" in e for e in result["errors"]))
+
+    def test_sequel_reused_asset_blank_prompt_only_warns(self):
+        baseline = make_package()
+        result = validator.validate(make_sequel(char_prompt=""), POLICY, baseline=baseline)
+        self.assertTrue(result["ok"], result["errors"])
+        self.assertTrue(any("图片提示词留空" in w for w in result.get("warnings", [])))
+
+    def test_sequel_episode_number_should_follow_baseline(self):
+        baseline = make_package(second_episode=True)
+        result = validator.validate(make_sequel(ep="E02"), POLICY, baseline=baseline)
+        self.assertTrue(any("集号不大于基线包最大集号" in w for w in result.get("warnings", [])))
+
 
 if __name__ == "__main__":
     sys.exit(0 if unittest.main(exit=False).result.wasSuccessful() else 1)

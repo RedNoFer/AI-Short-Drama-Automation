@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "resource_root": "/Users/a1/work/3000课程21个skill",
-  "verified_on": "2026-10-16；2026-10-20 新增 E25；2026-10-21 新增 E27（MiniMax H3 官方提示词 Skill）",
+  "verified_on": "2026-10-16；2026-10-20 新增 E25；2026-10-21 新增 E27（MiniMax H3 官方提示词 Skill）；2026-10-22 新增 E28（红喵导演台站位 Skill）",
   "groups": [
     {
       "id": "A",
@@ -859,9 +859,81 @@
           "role": "tool",
           "label": "H3 提示词结构机检脚本",
           "read_when": "编译后机检"
+        },
+        {
+          "path": ".agents/skills/minimax-h3-adapter/examples/h3-base-package-sample.md",
+          "role": "example",
+          "label": "H3 精简制作包验收样例（base 三字段）",
+          "read_when": "交付前自检与验收演练"
+        },
+        {
+          "path": ".agents/skills/minimax-h3-adapter/examples/h3-ref2va-package-sample.md",
+          "role": "example",
+          "label": "H3 精简制作包验收样例（Ref2VA 六段式）",
+          "read_when": "全参考模式交付前自检"
+        },
+        {
+          "path": ".agents/skills/minimax-h3-adapter/references/asset-reference.md",
+          "role": "main",
+          "label": "H3 素材引用规范（资产→<Subject N>/<Picture N> 编号与登记）",
+          "read_when": "H3 轨编译正文与交付前核对素材引用"
         }
       ],
       "read_when": "用户指定 MiniMax H3 / 海螺 H3 / H3 提示词结构时的模式判定、分镜时间轴与最终提示词编译"
+    },
+    {
+      "id": "E28",
+      "name": "红喵导演台站位 Skill（SCENE_JSON 空间真值）",
+      "path": "26站位图+skill/站位Skill/hongmiao-director/SKILL.md",
+      "type": "skill-markdown（SKILL.md ＋ 2 份 references ＋ agents 配置）",
+      "input": "剧本空间事实（角色位置/朝向/固定结构与数量/道具承托/走位）、S03 稳定资产ID、目标镜头的机位意图与可见主体",
+      "output": "SCENE_JSON——场景基底（scene 地标与出入口/characters 初始位与朝向与姿势/props 尺寸与语义/camera 机位/lighting 光向/continuity）与镜级增量（只写相机位姿、可见面、movementPath 与承托变化）；以及由 JSON 编译出的自然语言站位描述，进入【公共总规范】与镜头行",
+      "boundary": "只产出 SCENE_JSON 与文字站位描述，不渲染 3D 站位图、不产出或批准写实剧照（本地无红喵导演台运行时）；JSON 只存内部档案不进交付包，交付包只带自然语言站位；坐标是内部量化值，地标与固定结构才是真值锚点（沿用 SPACE-01 的左右与位置定义口径）；武器库仅 longsword/knife/parang/spear/baseball-bat/g21-pistol/ak15k-rifle 七类动作片武器，现代与日常题材不适用",
+      "files": [
+        {
+          "path": "26站位图+skill/站位Skill/hongmiao-director/SKILL.md",
+          "role": "main",
+          "label": "红喵导演台主文件（四段输出与空间/姿势/武器/镜头规则）",
+          "read_when": "进入站位工作时先读"
+        },
+        {
+          "path": "26站位图+skill/站位Skill/hongmiao-director/references/scene-schema.md",
+          "role": "main",
+          "label": "SCENE_JSON 字段规范（坐标、朝向、props、camera、导演标记）",
+          "read_when": "生成或修复 JSON 前读"
+        },
+        {
+          "path": "26站位图+skill/站位Skill/hongmiao-director/references/weapon-library.md",
+          "role": "main",
+          "label": "七类本地武器与动作映射",
+          "read_when": "涉及持械或武打镜头时读"
+        },
+        {
+          "path": "26站位图+skill/站位Skill/hongmiao-director/agents/openai.yaml",
+          "role": "route",
+          "label": "技能接口配置",
+          "read_when": "需要登记调用入口时读"
+        },
+        {
+          "path": "26站位图+skill/提示词.txt",
+          "role": "example",
+          "label": "五条中文场景构想样本",
+          "read_when": "确认输入粒度时参考"
+        },
+        {
+          "path": "26站位图+skill/站位参考1-5.png",
+          "role": "example",
+          "label": "3D 站位预览样本（带标签白模，仅示意语义）",
+          "read_when": "理解站位语义时参考，不作可复现产物"
+        },
+        {
+          "path": "26站位图+skill/站位展示1-5.png",
+          "role": "example",
+          "label": "按站位生成的写实剧照样本",
+          "read_when": "理解空间到画面的对应时参考，不作可复现产物"
+        }
+      ],
+      "read_when": "短剧工作流阶段2 建场景空间基底、阶段3 风险镜头出镜级增量、阶段4 把站位编译进提示词正文；独立任务为多人共处/固定座位/狭小室内场景出站位方案"
     }
   ]
 }

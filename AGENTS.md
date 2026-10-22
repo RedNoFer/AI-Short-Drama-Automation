@@ -25,7 +25,7 @@
 
 ## 短剧工作流Skill
 
-用户只提供小说与目标短剧风格/画风，希望系统自行推算集数、时长、片段并完成剧本、资产设计、分镜及全部视频提示词时，读取[短剧工作流Skill](.agents/skills/short-drama-workflow/SKILL.md)。该技能以本目录导航和原始模块为依据，默认每条视频片段 30 秒、5–7 次硬切，每条视频提示词不超过 2000 Unicode 字符；人物资产提示词为 16:9 四视图，场景资产提示词为 16:9 全景，具体数值以其 policy.json 为准。**当前最终只交付一个符合[固定精简制作包模板](.agents/skills/short-drama-workflow/assets/drama-compact-package-template.md)的 `创作输出/作品名/精简制作包.md`**；在线原件地址和本地副本已写在 Skill 中，用户无须重发。模板只导入资产图片提示词，不携带实际图片或内部剧本/分镜/QC 文件。剧情、资产、分镜和提示词在各自写作时应用质量规范、交接前评价；每批导出后由脚本校验导入结构、字符数、时间轴、资产代码绑定、镜头编号和硬切，再由 agent 独立复核剧情、表演和画面质量，整改复评；未生成的视频不得标为遵循提示词验收通过。
+用户只提供小说与目标短剧风格/画风，希望系统自行推算集数、时长、片段并完成剧本、资产设计、分镜及全部视频提示词时，读取[短剧工作流Skill](.agents/skills/short-drama-workflow/SKILL.md)。该技能以本目录导航和原始模块为依据，默认每条视频片段 30 秒、6–11 镜、**5–10 次硬切**，每条视频提示词不超过 3000 Unicode 字符（第二档默认；第一档紧凑 2000、第三档试点 4500，具体数值以其 policy.json 为准）；人物资产提示词为 16:9 四视图，场景资产提示词为 16:9 全景。**当前最终只交付一个符合[固定精简制作包模板](.agents/skills/short-drama-workflow/assets/drama-compact-package-template.md)的 `创作输出/作品名/精简制作包.md`**；在线原件地址和本地副本已写在 Skill 中，用户无须重发。模板只导入资产图片提示词，不携带实际图片或内部剧本/分镜/QC 文件。剧情、资产、分镜和提示词在各自写作时应用质量规范、交接前评价；每批导出后由脚本校验导入结构、字符数、时间轴、资产代码绑定、镜头编号和硬切（按轨选择 `--model seedance25|wan30|h3` 与 `--tier`），再由 agent 独立复核剧情、表演和画面质量，整改复评；未生成的视频不得标为遵循提示词验收通过。
 
 ## 小墨 6.3 分镜补充
 
@@ -33,7 +33,11 @@
 
 ## MiniMax H3 提示词分支
 
-用户要求使用 MiniMax H3（海螺 H3 / H3 结构 / minimaxh3）的提示词结构时，读取[H3 提示词分支](.agents/skills/minimax-h3-adapter/SKILL.md)与导航中的 E27，并按[W17 组合流程](.agents/skills/zhifeiji-workflow-router/references/workflows.md#w17)执行：先按 H3 口径做分镜与切点时间轴，再编译成官方 base 三字段或 Ref2VA 六段式正文。官方原文原样保存在`25 minimax H3官方skill/skills/`（`h3-prompt-writing/SKILL.md`、`references/base-en.txt`、`references/ref-en.txt`），不得改写；本地只做路由、资产映射（`@CH/@SC/@PROP` → `<Subject N>`）与冲突裁决。
+用户要求使用 MiniMax H3（海螺 H3 / H3 结构 / minimaxh3）的提示词结构时，读取[H3 提示词分支](.agents/skills/minimax-h3-adapter/SKILL.md)、[H3 素材引用规范](.agents/skills/minimax-h3-adapter/references/asset-reference.md)与导航中的 E27，并按[W17 组合流程](.agents/skills/zhifeiji-workflow-router/references/workflows.md#w17)执行：先按 H3 口径做分镜与切点时间轴，再编译成官方 base 三字段或 Ref2VA 六段式正文。官方原文原样保存在`25 minimax H3官方skill/skills/`（`h3-prompt-writing/SKILL.md`、`references/base-en.txt`、`references/ref-en.txt`），不得改写；本地只做路由、资产映射（`@CH/@SC/@PROP` → `<Subject N>`，编号按角色→场景→道具顺序从 1 连续）与冲突裁决。
 
-H3 单条成片 4–15 秒，与本目录短剧工作流默认 30 秒片段冲突时在分镜阶段重划边界，不把 30 秒硬塞进单条；H3 轨不套用 S18 的 2000/3000/4500 字符档，最终正文只交付一套 H3 结构，不与 Seedance/Wan 模板并列。未上传的真实图片不得预写 `<Picture N>`。8 个官方风格 Skill 面向 MiniMax Hub canvas 工作流，用户点名时才读取。
+H3 轨片段不额外拆，时长沿用目标应用的片段单位（默认 30 秒），正文用官方固定格式写完整时间轴（官方 4–15 秒是模型单条输出上限，属生成侧登记事项）；H3 轨不套用 S18 的 2000/3000/4500 字符档（官方未设字符上限，本项目硬顶 6000 字符、低于 1200 提醒过简，硬切带 0–6 次），最终正文只交付一套 H3 结构，不与 Seedance/Wan 模板并列。正文原样写入精简制作包的 `#### 视频提示词` 块，机检用 `validate_compact_package.py <包> --model h3`。未上传的真实图片不得预写 `<Picture N>`。8 个官方风格 Skill 面向 MiniMax Hub canvas 工作流，用户点名时才读取；本目录无该运行时，只能读风格与流程规范，生成步骤不得声称已执行。
+
+## 站位空间真值分支
+
+多人共处、固定座位、狭小室内、站位易错或需要可计算机位时，读取导航中的 E28（`26站位图+skill/站位Skill/hongmiao-director/SKILL.md`，原文件保持不改）并按[W18 组合流程](.agents/skills/zhifeiji-workflow-router/references/workflows.md#w18)执行：阶段 2 为命中风险闸门的场景出 `SCENE_LOC_*.json` 基底，阶段 3 为命中同一闸门的镜头出镜级增量 JSON，overlay 必须先于该镜分镜文字产出，机检用 `validate_space_blocking.py`。坐标以地标与固定结构为真值锚点，交付包只带自然语言站位描述、不带数值与图片编号。**本目录无红喵导演台运行时，只出 SCENE_JSON 与文字站位，不渲染 3D 站位图、不产出或批准写实剧照**；`26站位图+skill/` 下的 PNG 仅为语义样本。
 

@@ -551,6 +551,11 @@ MD 是创作规则/参考，TXT 中可能包含完整执行指令。PDF、示例
 - 产物：分时微表情表演指导——130 个表演原型、情绪路线、70 条肌肉调度链、四拍结构（基线→泄露→压回→余态）、节奏密度规则与嘴部安全护栏，解决 AI 视频"假脸、僵硬、恐怖谷"。
 - 边界：只负责表演与情绪层，不做编剧、不做面部绑定与口型编辑、不做最终合成；`微表情提示词/` 目录（表情控制、人像光影、运镜、场景、服饰、风格、镜头语言）与既有 S10–S13 主题重叠，默认不重复引入，仅「即梦AI表情控制提示词(100套)」可作静态表情备查。
 
+| 文件 | 职责 | 读取时机 |
+|---|---|---|
+| [人物微表情表演skill.zip](</Users/a1/work/3000课程21个skill/23 真人感微表情AI视频Skill/人物微表情表演skill.zip>) | main：Skill 包（SKILL.md + 7 份 references） | 执行表演层设计时按需读取对应 reference |
+| [seedance-prompt-单skill整合版本.zip](</Users/a1/work/3000课程21个skill/23 真人感微表情AI视频Skill/AI微表情拆解-拒绝塑料感与AI面瘫脸/seedance-prompt-单skill整合版本.zip>) | alternate：单体整合版 SKILL.md | 需要单文件版规则时 |
+
 <a id="e26"></a>
 
 ## E26｜剧本创作 Skill 合集（AI影视剧本 / 短剧系列 / 微电影）
@@ -562,6 +567,12 @@ MD 是创作规则/参考，TXT 中可能包含完整执行指令。PDF、示例
 - 产物：①`小说转AI影视剧本skill.md`——竖屏 AI 短剧生产制式，手术式改编（砍支线/并人物/排爽点/设计钩子链）、一个▲行＝一个可生成画面、单集 900–1200字/1–3 场/20–30 个▲行/15–20 条台词、爽点密度与每集钩子、九条铁律与质检清单；②`短剧系列剧本创作skill.md`——季级结构、五级钩子强度 L1–L5（每集≥L3、第1/6集≥L4、类型不连续两集重复）、人物微弧/中弧/大弧、配角独立视角集、余韵七技法与反俗套；③`微电影剧本创作skill.md`——人物驱动、六层人物档案与镜像对立、核心人物≤3 且禁超 4 个有台词角色、不可逆代价、结束在沉默中、反俗套。
 - 边界：与 S15 **互补不替代**——S15 仍提供多产物助手、忠实/重构双模式、长篇工作流与合规条款；本组只补体裁专属标准，不覆盖台词逐字、故事档案与合规要求。选用规则见工作流 `references/script-route-and-rubric.md`。
 
+| 文件 | 职责 | 读取时机 |
+|---|---|---|
+| [小说转AI影视剧本skill.md](</Users/a1/work/3000课程21个skill/24 剧本创作skill合集/小说转AI影视剧本skill.md>) | route_ai_drama：AI影视剧本引擎（默认路线） | AI短剧制式项目的阶段1改编与体量口径 |
+| [短剧系列剧本创作skill.md](</Users/a1/work/3000课程21个skill/24 剧本创作skill合集/短剧系列剧本创作skill.md>) | route_series：短剧系列引擎 | 用户指定系列/季级结构时加读 |
+| [微电影剧本创作skill.md](</Users/a1/work/3000课程21个skill/24 剧本创作skill合集/微电影剧本创作skill.md>) | route_microfilm：微电影引擎 | 用户指定微电影体裁时加读 |
+
 <a id="e27"></a>
 
 ## E27｜MiniMax H3 官方提示词 Skill（含本地 H3 分支）
@@ -572,6 +583,40 @@ MD 是创作规则/参考，TXT 中可能包含完整执行指令。PDF、示例
 - 输入：剧本或逐镜分镜表、稳定资产ID与已上传参考素材、目标成片时长（4–15秒）、生成模式（T2VA/I2VA/FL2VA/L2VA/Ref2VA）。
 - 产物：H3 结构化视频提示词：base 三字段（integrated_multimodal_description/overall_soundscape/non_diegetic_music）或 Ref2VA 六段式（subject_definitions/summary/retention_analysis/detailed_description/overall_soundscape/non_diegetic_music），附 H3 分镜与切点时间轴。
 - 边界：官方原文不改写；正文英文、台词歌词与画面可见文字保留原语言；官方 h3-prompt-writing 仅有英文版，8 个风格 Skill 面向 MiniMax Hub canvas 工作流；H3 单条 4–15 秒与本目录 30 秒片段口径冲突按 W17 在分镜阶段裁决；本目录资产ID映射为 <Subject N>，未上传图片不得预写 <Picture N>。
+
+| 文件 | 职责 | 读取时机 |
+|---|---|---|
+| [SKILL.md](</Users/a1/work/3000课程21个skill/25 minimax H3官方skill/skills/h3-prompt-writing/SKILL.md>) | main：官方 H3 提示词 Skill 主文件 | 进入 H3 分支时先读 |
+| [base-en.txt](</Users/a1/work/3000课程21个skill/25 minimax H3官方skill/skills/h3-prompt-writing/references/base-en.txt>) | main：base 模式指南（T2VA/I2VA/FL2VA/L2VA） | 编译 base 三字段与分镜时间轴时 |
+| [ref-en.txt](</Users/a1/work/3000课程21个skill/25 minimax H3官方skill/skills/h3-prompt-writing/references/ref-en.txt>) | main：全参考模式指南（Ref2VA 六段式） | 全参考改写与参考标签规则 |
+| [SKILL.md](</Users/a1/work/3000课程21个skill/.agents/skills/minimax-h3-adapter/SKILL.md>) | route：本地 H3 提示词分支（路由、映射与冲突裁决） | 用户点名 minimaxh3 / H3 结构时 |
+| [audit_h3_prompt.py](</Users/a1/work/3000课程21个skill/.agents/skills/minimax-h3-adapter/scripts/audit_h3_prompt.py>) | tool：H3 提示词结构机检脚本 | 编译后机检 |
+| [h3-base-package-sample.md](</Users/a1/work/3000课程21个skill/.agents/skills/minimax-h3-adapter/examples/h3-base-package-sample.md>) | example：H3 精简制作包验收样例（base 三字段） | 交付前自检与验收演练 |
+| [h3-ref2va-package-sample.md](</Users/a1/work/3000课程21个skill/.agents/skills/minimax-h3-adapter/examples/h3-ref2va-package-sample.md>) | example：H3 精简制作包验收样例（Ref2VA 六段式） | 全参考模式交付前自检 |
+| [asset-reference.md](</Users/a1/work/3000课程21个skill/.agents/skills/minimax-h3-adapter/references/asset-reference.md>) | main：H3 素材引用规范（资产→<Subject N>/<Picture N> 编号与登记） | H3 轨编译正文与交付前核对素材引用 |
+
+<a id="e28"></a>
+
+## E28｜红喵导演台站位 Skill（SCENE_JSON 空间真值）
+
+[红喵导演台站位 Skill](</Users/a1/work/3000课程21个skill/26站位图+skill/站位Skill/hongmiao-director/SKILL.md>)
+
+- 文件类型：skill-markdown（SKILL.md ＋ 2 份 references ＋ agents 配置）。
+- 输入：剧本空间事实（角色位置/朝向/固定结构与数量/道具承托/走位）、S03 稳定资产 ID、目标镜头的机位意图与可见主体。
+- 产物：SCENE_JSON——场景基底（`scene` 地标与出入口／`characters` 初始位与朝向与姿势／`props` 尺寸与语义／`camera` 机位／`lighting` 光向／`continuity`）与镜级增量（只写相机位姿、可见面、`movementPath` 与承托变化）；以及由 JSON 编译出的自然语言站位描述，进入【公共总规范】与镜头行。
+- 边界：**只产出 SCENE_JSON 与文字站位描述，不渲染 3D 站位图、不产出或批准写实剧照**（本地无红喵导演台运行时）；JSON 只存内部档案不进交付包，交付包只带自然语言站位；坐标是内部量化值，地标与固定结构才是真值锚点（沿用 SPACE-01 的左右与位置定义口径）；武器库仅 `longsword`/`knife`/`parang`/`spear`/`baseball-bat`/`g21-pistol`/`ak15k-rifle` 七类动作片武器，现代与日常题材不适用。
+
+| 文件 | 职责 | 读取时机 |
+|---|---|---|
+| [SKILL.md](</Users/a1/work/3000课程21个skill/26站位图+skill/站位Skill/hongmiao-director/SKILL.md>) | main：四段输出（布局摘要／AI视频提示词／假设与风险／SCENE_JSON）与空间、姿势、武器、镜头规则 | 进入站位工作时先读 |
+| [scene-schema.md](</Users/a1/work/3000课程21个skill/26站位图+skill/站位Skill/hongmiao-director/references/scene-schema.md>) | main：SCENE_JSON 字段规范（坐标单位、朝向、props 语义、camera 字段、导演标记） | 生成或修复 JSON 前读 |
+| [weapon-library.md](</Users/a1/work/3000课程21个skill/26站位图+skill/站位Skill/hongmiao-director/references/weapon-library.md>) | main：七类本地武器与动作映射 | 涉及持械或武打镜头时读 |
+| [openai.yaml](</Users/a1/work/3000课程21个skill/26站位图+skill/站位Skill/hongmiao-director/agents/openai.yaml>) | route：技能接口配置 | 需要登记调用入口时读 |
+| [提示词.txt](</Users/a1/work/3000课程21个skill/26站位图+skill/提示词.txt>) | example：五条中文场景构想样本 | 确认输入粒度时参考 |
+| [站位参考1-5.png](</Users/a1/work/3000课程21个skill/26站位图+skill/站位参考1.png>) | example：3D 站位预览样本（带标签白模，仅示意语义） | 理解站位语义时参考，不作可复现产物 |
+| [站位展示1-5.png](</Users/a1/work/3000课程21个skill/26站位图+skill/站位展示1.png>) | example：按站位生成的写实剧照样本 | 理解空间到画面的对应时参考，不作可复现产物 |
+
+组合流程见 [W18｜站位图与空间真值](workflows.md#w18)。
 
 ## 原配置 PDF 与示例媒体
 
