@@ -927,13 +927,24 @@ def check_space_sync(parsed: dict, char_names: dict, space_dir: Path,
                     side = _space_screen_side(overlay, position)
                     if not side:
                         continue
-                    # 只认「名字＋在…左/右侧」这种明确的画面方位；「坐在他左侧」是座位关系、
-                    # 「黑衣人影、画面右侧是…」的左右属于下一个人，都不能算到这个头上。
+                    # 名字与被判定的方位之间若夹着另一个角色名，左右属于后一个人
+                    # （「阿泽居中、老杨在他左侧」），不能算到前一个人头上。
+                    # 只认「名字…在/位于 + 画面左/右侧」这种方位句；
+                    # 「转向右后方」是动作、「坐在他左侧」是座位，都不算画面方位。
                     claim = re.search(
-                        re.escape(name) + r"在[^。！？\n]{0,4}?(?:画面)?(左|右)(侧|边)", prompt)
-                    if claim and claim.group(1) != side:
+                        re.escape(name) + r"([^。！？\n]{0,6}?)[在位于落在][^。！？\n]{0,3}?(?:画面)?(左|右)(侧|边)",
+                        prompt)
+                    gap = claim.group(1) if claim else ""
+                    if claim and (any(
+                            other in gap
+                            for other in ("阿泽", "苏晚", "老杨", "许棠", "小林", "黑衣人")
+                            if other != name)
+                            or "、" in gap          # 「…的黑衣人影、画面右侧是阿泽」：左右属于下一项
+                            or any(k in gap for k in ("坐", "躺", "蹲", "靠"))):  # 座位／姿态关系，不是画面方位
+                        claim = None
+                    if claim and claim.group(2) != side:
                         warnings.append(
-                            f"{label}: 正文写「{name}」在画面{claim.group(1)}侧，"
+                            f"{label}: 正文写「{name}」在画面{claim.group(2)}侧，"
                             f"站位增量算出的位置在{side}侧（镜头 {overlay.get('shot')}）")
                     if name and name not in prompt:
                         warnings.append(

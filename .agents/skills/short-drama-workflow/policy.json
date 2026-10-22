@@ -1,5 +1,5 @@
 {
-  "policy_version": 22,
+  "policy_version": 23,
   "execution": {
     "model": "isolated_stage_subagents",
     "orchestrator_holds": [
@@ -418,7 +418,14 @@
         "动作与道具状态的出入口衔接",
         "剧情因果与情绪的流畅承接"
       ]
-    }
+    },
+    "stage_reviews": {
+      "stage1": 3,
+      "stage2": 1,
+      "stage45": 1,
+      "note": "阶段1 在事件/分集、逐集剧本、片段规划三个交接点各一次；阶段2 资产母版与声线母版一次（落盘 内部/03b-资产评审.md，阶段出口门强制）；阶段4 完成后、阶段5 导出前一次全量对抗性评审。全部由与起草方隔离的新上下文承担。"
+    },
+    "stage2_review_artifact": "内部/03b-资产评审.md"
   },
   "script_routes": {
     "default_route": "R-AI",
@@ -555,5 +562,50 @@
     "compact_check": "validate_compact_package.py --space-dir（缺失即判错，不再 skipped 通过）",
     "no_render": "只出 SCENE_JSON 与文字站位，不渲染 3D 站位图、不产出写实剧照",
     "note": "2026-10-22 PROC-05 事故后由「命中才加读」改为「命中即强制」"
+  },
+  "storyboard_selfcheck": {
+    "required_stats_keys": [
+      "镜数",
+      "固定",
+      "固定占比",
+      "焦段种数",
+      "机位角度种数",
+      "侧45占比"
+    ],
+    "required_table_columns": [
+      "景别",
+      "焦段",
+      "机位",
+      "运镜"
+    ],
+    "fixed_ratio_max": 0.1,
+    "max_consecutive_fixed": 1,
+    "max_consecutive_close": 2,
+    "focal_variety_min": 4,
+    "angle_variety_min": 6,
+    "pct_tolerance_pp": 1.0,
+    "angle_tolerance": 1,
+    "exempt_fixed_keywords": [
+      "重锤",
+      "留白",
+      "凝固"
+    ],
+    "validator": "scripts/crosscheck_storyboard.py（阶段3出口门强制调用；--emit 可反算统计行）",
+    "definition": "references/storyboard-selfcheck.md",
+    "note": "只校验统计与配额，不判断运镜是否有叙事职责；「常规镜头≤30%」无可机械判定口径，仍由评审按 E24 原版判断。"
+  },
+  "gates": {
+    "script": "scripts/validate_stage_artifacts.py",
+    "stages": [
+      "2",
+      "3",
+      "3.5",
+      "4"
+    ],
+    "run_after_each_stage": true,
+    "block_on_errors": true,
+    "stage35_artifact": "内部/04b-打斗路由判定表.md",
+    "stage2_review_artifact": "内部/03b-资产评审.md",
+    "note": "阶段出口门只证明结构成立（标题下有正文、表格有数据行、声明与实算一致）；语义质量仍由独立评审承担。"
   }
 }
