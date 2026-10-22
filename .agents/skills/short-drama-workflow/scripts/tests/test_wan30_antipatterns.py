@@ -45,7 +45,7 @@ CLEAN_ROWS = "\n".join(
     [
         "0-10秒，镜头：中景，侧45°机位，手持轻晃。画面：阿泽伸手抓起绳头，转身把绳头甩上肩；苏晚抬手按住被风吹起的纸角。全员不看镜头，视线落在远处路牌。",
         "10-20秒，硬切。镜头：近景，右后方45°。画面：老杨蹲下，把绳头一圈圈收进掌心；小林退开半步，抬手擦掉额头的汗。全员不看镜头。",
-        "20-30秒，硬切。镜头：全景，侧45°。画面：五人错位站在车头两侧，阿泽弯腰抹轮眉，苏晚翻笔记本，老杨收绳。全员不看镜头。",
+        "20-30秒，硬切。镜头：全景，侧45°。画面：三个人错位站在车头两侧，阿泽弯腰抹轮眉，苏晚翻笔记本，老杨收绳，另两人留在画外只给肩线。全员不看镜头。",
     ]
 )
 
@@ -68,7 +68,7 @@ class Wan30AntiPatternTests(unittest.TestCase):
         self.assertEqual(result["no_gaze_segments"], 0)
 
     def test_blocking_term_is_error(self):
-        result = self._audit(CLEAN_ROWS.replace("五人错位站在车头两侧", "五人并肩站在车头前", 1))
+        result = self._audit(CLEAN_ROWS.replace("三个人错位站在车头两侧", "五人并肩站在车头前", 1))
         self.assertGreater(result["errors"], 0)
         self.assertTrue(any(i["kind"] == "forbidden_blocking" for i in result["issues"]))
 

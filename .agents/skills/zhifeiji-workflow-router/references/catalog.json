@@ -921,15 +921,63 @@
           "read_when": "确认输入粒度时参考"
         },
         {
-          "path": "26站位图+skill/站位参考1-5.png",
+          "path": "26站位图+skill/站位参考1.png",
           "role": "example",
-          "label": "3D 站位预览样本（带标签白模，仅示意语义）",
+          "label": "3D 站位预览样本 1（带标签白模，仅示意语义）",
           "read_when": "理解站位语义时参考，不作可复现产物"
         },
         {
-          "path": "26站位图+skill/站位展示1-5.png",
+          "path": "26站位图+skill/站位展示1.png",
           "role": "example",
-          "label": "按站位生成的写实剧照样本",
+          "label": "按站位生成的写实剧照样本 1",
+          "read_when": "理解空间到画面的对应时参考，不作可复现产物"
+        },
+        {
+          "path": "26站位图+skill/站位参考2.png",
+          "role": "example",
+          "label": "3D 站位预览样本 2（带标签白模，仅示意语义）",
+          "read_when": "理解站位语义时参考，不作可复现产物"
+        },
+        {
+          "path": "26站位图+skill/站位展示2.png",
+          "role": "example",
+          "label": "按站位生成的写实剧照样本 2",
+          "read_when": "理解空间到画面的对应时参考，不作可复现产物"
+        },
+        {
+          "path": "26站位图+skill/站位参考3.png",
+          "role": "example",
+          "label": "3D 站位预览样本 3（带标签白模，仅示意语义）",
+          "read_when": "理解站位语义时参考，不作可复现产物"
+        },
+        {
+          "path": "26站位图+skill/站位展示3.png",
+          "role": "example",
+          "label": "按站位生成的写实剧照样本 3",
+          "read_when": "理解空间到画面的对应时参考，不作可复现产物"
+        },
+        {
+          "path": "26站位图+skill/站位参考4.png",
+          "role": "example",
+          "label": "3D 站位预览样本 4（带标签白模，仅示意语义）",
+          "read_when": "理解站位语义时参考，不作可复现产物"
+        },
+        {
+          "path": "26站位图+skill/站位展示4.png",
+          "role": "example",
+          "label": "按站位生成的写实剧照样本 4",
+          "read_when": "理解空间到画面的对应时参考，不作可复现产物"
+        },
+        {
+          "path": "26站位图+skill/站位参考5.png",
+          "role": "example",
+          "label": "3D 站位预览样本 5（带标签白模，仅示意语义）",
+          "read_when": "理解站位语义时参考，不作可复现产物"
+        },
+        {
+          "path": "26站位图+skill/站位展示5.png",
+          "role": "example",
+          "label": "按站位生成的写实剧照样本 5",
           "read_when": "理解空间到画面的对应时参考，不作可复现产物"
         }
       ],

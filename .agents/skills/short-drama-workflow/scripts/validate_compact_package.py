@@ -29,9 +29,75 @@ H3_TIME = re.compile(r"At\s+(\d{1,2}):(\d{2})\.(\d{3})")
 H3_SPEAKER = re.compile(r"\((S\d+)\)")
 H3_DIALOG = re.compile(r"<d>(.*?)</d>", re.S)
 H3_LABEL = re.compile(r"<(Subject|Picture|Video|Audio)\s+(\d+)>")
+# Uploaded-image numbers. The MD carries no image attachments, so Seedance
+# and H3 tracks must not pre-write them; the Wan3.0 track legitimately
+# binds real references with @ImageN and is checked for numbering and
+# binding consistency instead.
+IMAGE_NUMBER = re.compile(r"@(?:Image|图片)\s*\d+")
+IMAGE_BINDING = re.compile(r"@(?:Image|图片)\s*(\d+)\s*[＝=]\s*([A-Za-z][A-Za-z0-9_-]*)")
 H3_VOICE_ANCHOR = re.compile(
     r"\b(voice|tone|low|high|hoarse|husky|soft|calm|firm|steady|breathy|"
     r"whisper|gravelly|childlike|elderly|female|male|deep|thin)\b", re.I)
+
+# Space layer (E28 / W18): the prompt body must stay in natural language, never
+# leak SCENE_JSON internals, and agree with the shot overlays on cast and side.
+SPACE_LEAK = re.compile(
+    r"position\s*=|fov\s*=|posePreset|movementPath|SCENE_JSON|"
+    r"\[\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*\]|"
+    r"坐标\s*[：:=（(]?\s*-?\d|朝向着?为\s*-?\d")
+SPACE_DEFAULT_DIR = ("内部", "04b-站位图")
+
+# Outfit variants (E30 / outfit-variants.md): a wearable costume is carried as a
+# prop-type asset whose prompt declares its owner, so the app can bind it.
+OUTFIT_TOP = ("西装", "礼服", "婚纱", "连衣裙", "制服", "孝服", "工装", "军装",
+              "警服", "校服", "旗袍", "唐装", "中山装", "运动服", "风衣", "大衣",
+              "夹克", "针织衫", "毛衣", "背心", "衬衫", "polo衫")
+OUTFIT_OWNER = re.compile(r"供\s*(CHAR_[A-Za-z0-9_-]+)\s*穿着")
+OUTFIT_MARK = re.compile(r"可穿戴服装|服装变体|可穿戴道具")
+FIXED_OUTFIT = re.compile(r"固定服装[：:]\s*([^\n。]{0,80})")
+GARMENT_VERB = (r"(?:穿|换上|换了|套上|套着|身穿|穿着|穿了一身|穿着一身|脱下|脱掉|换到"
+                r"|这身|那身)")
+CHANGE_VERB = re.compile(r"换上|脱下|脱掉|换到|套上|换了一身|改穿")
+# Words that imply a different garment from the character's default look.
+# 场合级（身份/职务/仪式）服装词。「工装」是款式类别而非场合级制服（工装夹克/工装裤
+# 是角色的固定装，不构成服装变体），故只收「工装服」。
+VARIANT_WORDS = ("西装", "礼服", "婚纱", "连衣裙", "孝服", "军装", "警服", "旗袍",
+                 "唐装", "中山装", "校服", "运动服", "工装服")
+
+
+def _pronoun_words(line: str) -> set:
+    """Clothing words worn by the only speaker in a single-character fragment."""
+    found: set = set()
+    pattern = re.compile(
+        r"(?<![其])(?:他|她)[^。！？\n]{0,2}?" + GARMENT_VERB +
+        r"[^。！？\n]{0,10}?(" + "|".join(OUTFIT_TOP) + r")")
+    for match in pattern.finditer(line):
+        found.add(match.group(1))
+    return found
+
+
+def _attributed_words(line: str, name: str) -> set:
+    """Clothing words explicitly worn by this character in one line.
+
+    Only patterns that state the wearer count. A name merely appearing in the
+    same line as someone else's coat must not be counted.
+    """
+    found: set = set()
+    pattern = re.compile(
+        re.escape(name) + r"[^。！？\n]{0,4}?" + GARMENT_VERB +
+        r"[^。！？\n]{0,10}?(" + "|".join(OUTFIT_TOP) + r")")
+    for match in pattern.finditer(line):
+        found.add(match.group(1))
+    reverse = re.compile(
+        "(" + "|".join(OUTFIT_TOP) + r")[^。！？\n]{0,6}?(?:穿在|上身|属于|是|套在)"
+        r"[^。！？\n]{0,4}?" + re.escape(name))
+    for match in reverse.finditer(line):
+        found.add(match.group(1))
+    possessive = re.compile(
+        re.escape(name) + r"[^。！？\n]{0,3}?的(" + "|".join(OUTFIT_TOP) + r")")
+    for match in possessive.finditer(line):
+        found.add(match.group(1))
+    return found
 
 
 def _band(value, default):
@@ -57,8 +123,11 @@ def check_prompt(prompt: str, episode: str, shot: str, duration: int, bindings: 
                  policy: dict, errors: list[str], char_names: dict | None = None,
                  oner: bool = False, model: str = "seedance25",
                  warnings: list[str] | None = None, tier: str | None = None,
-                 extra_fields: dict | None = None) -> dict:
+                 extra_fields: dict | None = None,
+                 asset_codes: set | None = None,
+                 asset_prompts: dict | None = None) -> dict:
     label = f"{episode}/{shot}"
+    asset_prompts = asset_prompts or {}
     stats = {"episode": episode, "shot": shot, "model": model,
              "mode": "fight_oner" if oner else "standard", "characters": len(prompt)}
     if model == "h3":
@@ -79,8 +148,9 @@ def check_prompt(prompt: str, episode: str, shot: str, duration: int, bindings: 
                  .get("tier3_full_xiaomo63", {}).get("prompt_max_chars", limit))
     if len(prompt) > limit:
         errors.append(f"{label}: 视频提示词 {len(prompt)} 字符，超过 {limit}")
-    if re.search(r"@Image\s+\d+|@图片\d+", prompt):
-        errors.append(f"{label}: 导入文件没有图片附件，不得预写 @Image/@图片 编号")
+    if model != "wan30" and IMAGE_NUMBER.search(prompt):
+        errors.append(f"{label}: 导入文件没有图片附件，不得预写 @Image/@图片 编号"
+                      "（本轨用资产代码点名；Wan3.0 轨才允许 @Image 多模态参考）")
     if "【参数】" in prompt:
         errors.append(f"{label}: 不再使用【参数】段；剧集/片段/时长/画幅由片段标题与应用设置承载，画风并入【公共总规范】")
     positions = []
@@ -102,7 +172,37 @@ def check_prompt(prompt: str, episode: str, shot: str, duration: int, bindings: 
         for code in codes:
             if code not in sections["【参考】"]:
                 errors.append(f"{label}: 【参考】缺少已绑定资产 {code}")
+    if model == "wan30":
+        pairs = IMAGE_BINDING.findall(sections["【参考】"])
+        numbers = [int(number) for number, _ in pairs]
+        if numbers:
+            if sorted(numbers) != list(range(1, len(numbers) + 1)):
+                errors.append(
+                    f"{label}: @Image 编号必须从 1 连续编号，当前为 {sorted(numbers)}")
+            bound_all = {c for codes in bindings.values() for c in codes}
+            # 角色的视频参考形态：CHAR_0X_PHOTO 是 CHAR_0X 的「单张电影剧照」形态。
+            # 段头绑定的是角色身份资产（CHAR_0X），参考绑的是该角色的剧照——
+            # 同一角色，绑定了身份即视为已绑定该角色的剧照。
+            for number, code in pairs:
+                if asset_codes is not None and code not in asset_codes:
+                    errors.append(
+                        f"{label}: @Image{number} 指向 {code}，但该资产在固定资产区没有定义")
+                    continue
+                base = code[:-6] if code.endswith("_PHOTO") else code
+                if code in bound_all or base in bound_all:
+                    continue
+                warnings.append(
+                    f"{label}: @Image{number} 指向 {code}，该资产未绑定到本片段"
+                    "（跨场承接引用时属正常，确认不是漏绑）")
+            # 本轨硬规则：视频参考不得是白底四视图设定板（WAN30-01 硬规则 1）
+            for number, code in pairs:
+                prompt = asset_prompts.get(code, "")
+                if prompt and "四视图" in prompt and "不是四视图" not in prompt:
+                    errors.append(
+                        f"{label}: @Image{number} 指向 {code}，但该角色资产是白底四视图设定板——"
+                        "本轨视频参考必须是单张场景内电影剧照（WAN30-01 硬规则 1）")
     rows = []
+    thin_shots = []
     for line in sections["【时间轴】"].splitlines():
         line = line.strip()
         if not line:
@@ -157,11 +257,29 @@ def check_prompt(prompt: str, episode: str, shot: str, duration: int, bindings: 
                     exempt = policy.get("voice", {}).get("rate_exempt_keywords", [])
                     if not any(word in text for word in exempt):
                         errors.append(f"{label}: 台词语速 {hanzi / span:.2f} 字/秒（台词汉字/镜内秒）超 {max_rate}，须补速率申报或调整时长")
+                share_limit = policy.get("voice", {}).get("dialogue_share_warn", 0.0)
+                if share_limit and span > 0 and hanzi:
+                    share_exempt = policy.get("voice", {}).get("dialogue_share_exempt_keywords", [])
+                    if not any(word in text for word in share_exempt):
+                        share = (hanzi / max_rate) / span
+                        if share > share_limit:
+                            thin_shots.append((matched["start"], share))
+    if thin_shots and warnings is not None:
+        share_limit = policy.get("voice", {}).get("dialogue_share_warn", 0.75)
+        worst_at, worst = max(thin_shots, key=lambda item: item[1])
+        warnings.append(
+            f"{label}: {len(thin_shots)} 镜台词占镜内时长超过 {share_limit:.0%}"
+            f"（最紧一镜起于 {worst_at} 秒、占到 {worst:.0%}），镜内没有动作余量；"
+            "按 S02 口径台词之外还须留出动作与呼吸，须拆台词或补动作镜")
     if not rows:
         errors.append(f"{label}: 没有可解析的镜头行")
         return stats
     stats["camera_shots"] = len(rows)
-    cuts = len(rows) - 1
+    # 硬切按正文实际「硬切」标记计数，不用 len(rows)-1 代理——
+    # 首拍误写「硬切」时代理数会少 1，掩盖超带。
+    cuts = sum(1 for row in rows[1:] if "硬切" in row["text"])
+    if rows and "硬切" in rows[0]["text"]:
+        errors.append(f"{label}: 首拍不得写「硬切」——首镜直写开场画面，硬切只用于其后每一拍引出新镜头：{rows[0]['text'][:40]}")
     stats["hard_cuts"] = cuts
     if oner:
         for row in rows:
@@ -176,6 +294,30 @@ def check_prompt(prompt: str, episode: str, shot: str, duration: int, bindings: 
         low, high = band
         if not low <= cuts <= high:
             errors.append(f"{label}: 硬切 {cuts} 次，不在 {low}–{high} 次范围")
+    # 公共总规范自报的「全段 N 拍 N-1 次硬切」须与正文一致
+    public_block = sections.get("【公共总规范】", "")
+    declared = re.search(r"全段\s*(\d+)\s*拍\s*(\d+)\s*次硬切", public_block)
+    if declared:
+        d_shots, d_cuts = int(declared.group(1)), int(declared.group(2))
+        if d_shots != len(rows) or d_cuts != cuts:
+            errors.append(f"{label}: 公共总规范声明「全段 {d_shots} 拍 {d_cuts} 次硬切」与正文不符"
+                          f"（正文 {len(rows)} 拍 {cuts} 次硬切）")
+    # 4 人以上同框必须有人数锁定句（WAN30-02 第 3 条）
+    lock_re = re.compile(r"(画面内|镜内|画面上)[^。；\n]{0,6}恰好[一二三四五]人")
+    fuzzy_re = re.compile(r"其余[三四五六七八九]人|另外[三四五六七八九]道身影|其余人")
+    for index, row in enumerate(rows, 1):
+        body = row["text"]
+        named = sum(1 for name in ("阿泽", "苏晚", "老杨", "许棠", "小林", "黑衣人") if name in body)
+        # 五人群像：数词后必须紧跟群像/站位类名词（避免把「五个人各自…」误判为群像镜）
+        five = re.search(r"(?:五(?:人|名|道|个)(?:人|道|个)?(?:全景|远景|剪影|群像|同框|人影|身影|围拢|站|立|俯身|并肩|错开|散在|散落|不动)|[四五六]个人(?:各自|同时|一齐|陆续|先后|都|沉默|错开|散开|散立|不动|上车|下车|错落|围拢|散在|站在|围在|挤在|依次|一前排|排成|在)|[四五六](?:名|个|道)(?:人|身影|人影|剪影|轮廓)|[四五六]人(?:的|各|在|错))", body)
+        if (named >= 4 or five) and not lock_re.search(body):
+            errors.append(f"{label}: 第 {index} 个时间行（具名 {named} 人{'、含五人群像' if five else ''}）须写人数锁定句"
+                          "（三人如「本镜画面内恰好三人：左起阿泽、苏晚、老杨；每人只有一个身体、一张脸；不出现第四人。」；"
+                          "五人只点名三人、另两人按服装定位，如「本镜画面内恰好五人：左起苏晚、老杨、阿泽、黑色机能马甲的年轻女性、亮蓝防风外套的少年；每人只有一个身体、一张脸；不出现第六人。」）")
+        fuzzy = fuzzy_re.search(body)
+        if fuzzy and (named >= 4 or five):
+            errors.append(f"{label}: 第 {index} 个时间行用了模糊指代「{fuzzy.group(0)}」，"
+                          "须改为逐个点名并给左起位置（WAN30-02 第 3 条）")
     previous = 0.0
     for index, row in enumerate(rows, 1):
         start, end = float(row["start"]), float(row["end"])
@@ -239,7 +381,7 @@ def check_h3_prompt(prompt: str, episode: str, shot: str, duration: int, binding
     if min_chars and len(prompt) < min_chars:
         warnings.append(f"{label}: H3 视频提示词只有 {len(prompt)} 字符，"
                         f"低于 {min_chars}；官方生产 prompt 普遍 2500+ 字符（教学示例约 900），过简会削弱画面与声音细节")
-    if re.search(r"@Image\s+\d+|@图片\d+", prompt):
+    if IMAGE_NUMBER.search(prompt):
         errors.append(f"{label}: 导入文件没有图片附件，不得预写 @Image/@图片 编号")
     for marker in HEADINGS:
         if marker in prompt:
@@ -408,6 +550,35 @@ def _episode_number(code: str) -> int | None:
     return int(match.group(1)) if match else None
 
 
+def _check_character_prompt_fields(asset: dict, policy: dict, warnings: list) -> None:
+    """Soft-check the art-direction fields of a character image prompt.
+
+    Only reports missing dimensions; it never judges whether the detail is any
+    good. 「素颜」and 「无饰品」count as decisions, because a character with no
+    makeup or ornaments still has to say so explicitly.
+    """
+    spec = policy.get("assets", {})
+    groups = spec.get("character_prompt_groups", {})
+    if not groups:
+        return
+    body = asset["prompt"]
+    missing = []
+    for label, words in groups.items():
+        if not any(word in body for word in words):
+            missing.append(label)
+    parts = spec.get("face_parts", [])
+    face_min = spec.get("face_parts_min", 0)
+    if parts and face_min:
+        absent = [part for part in parts if part not in body]
+        if len(parts) - len(absent) < face_min:
+            missing.append("眉眼鼻唇缺" + "、".join(absent) + "的相对关系")
+    if missing:
+        warnings.append(
+            f"{asset['code']}「{asset['name']}」: 角色图片提示词缺少美工字段——"
+            + "；".join(missing)
+            + "（素颜、无饰品也须写明；字段在场不等于写得好）")
+
+
 def parse_structure(source: str) -> dict:
     """Parse the import skeleton of a compact package: assets, episodes, structure errors."""
     lines = source.replace("\r\n", "\n").replace("\r", "\n").split("\n")
@@ -557,9 +728,336 @@ def check_sequel(assets: list[dict], episodes: list[dict], index: dict,
     return reusable
 
 
+def _space_overlays(space_dir: Path) -> dict:
+    """Index shot overlays by (episode, fragment): {'E01': {'SH01': [doc, ...]}}."""
+    index: dict[str, dict[str, list[dict]]] = {}
+    if not space_dir.is_dir():
+        return index
+    for path in sorted(space_dir.rglob("*.json")):
+        if path.name.startswith("SCENE_") or path.name.startswith("_"):
+            continue
+        try:
+            doc = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        shot = str(doc.get("shot") or "")
+        parts = shot.split("_")
+        if len(parts) < 3:
+            continue
+        episode, fragment = parts[0], parts[1]
+        index.setdefault(episode, {}).setdefault(fragment, []).append(doc)
+    for episodes in index.values():
+        for docs in episodes.values():
+            docs.sort(key=lambda d: str(d.get("shot")))
+    return index
+
+
+def _space_screen_side(overlay: dict, position: list) -> str:
+    """Which side of the frame a character sits on, from the overlay camera."""
+    camera = overlay.get("camera") or {}
+    cam = camera.get("position") or []
+    target = camera.get("target") or []
+    if len(cam) < 3 or len(target) < 3:
+        return ""
+    fx, fz = target[0] - cam[0], target[2] - cam[2]
+    length = (fx * fx + fz * fz) ** 0.5
+    if length < 1e-6:
+        return ""
+    fx, fz = fx / length, fz / length
+    right_x, right_z = -fz, fx
+    dx, dz = position[0] - cam[0], position[2] - cam[2]
+    offset = dx * right_x + dz * right_z
+    if abs(offset) < 0.25:
+        return ""
+    return "右" if offset > 0 else "左"
+
+
+_RISK_ROW = re.compile(r"^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)秒[，,](.*)$", re.M)
+_RISK_LOCK = re.compile(r"本镜画面内恰好([一二三四五六])人")
+_RISK_CN = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6}
+
+
+def risk_shot_count(parsed: dict, char_names: dict) -> int:
+    """命中风险闸门（画内 ≥2 人）的时间行数量，供「缺站位层即判错」使用。"""
+    names = [n for n in char_names.values() if n]
+    if not names:
+        names = list(char_names.keys())
+    total = 0
+    for episode in parsed.get("episodes", []):
+        for shot in episode.get("shots", []):
+            text = shot.get("prompts", {}).get("视频提示词", "")
+            for m in _RISK_ROW.finditer(text):
+                body = m.group(3)
+                lock = _RISK_LOCK.search(body)
+                n = _RISK_CN.get(lock.group(1), 0) if lock else 0
+                if n == 0:
+                    n = sum(1 for nm in names if nm in body)
+                if n >= 2:
+                    total += 1
+    return total
+
+
+def space_exempted(pkg_path: Path) -> bool:
+    """输入单登记「站位层：豁免」才允许不建站位层（默认必须建）。"""
+    if pkg_path is None:
+        return False
+    internal = pkg_path.resolve().parent / "内部"
+    for pat in ("00-*输入单*.md", "00-*.md"):
+        for f in sorted(internal.glob(pat)):
+            try:
+                if "站位层：豁免" in f.read_text(encoding="utf-8") or "站位层: 豁免" in f.read_text(encoding="utf-8"):
+                    return True
+            except OSError:
+                continue
+    return False
+
+
+def check_space_sync(parsed: dict, char_names: dict, space_dir: Path,
+                     model: str = "seedance25") -> tuple[list[str], list[str], dict]:
+    """Cross-check the prompt body against the SCENE_JSON shot overlays.
+
+    Five checks per fragment that has a space layer:
+      1. overlay count must equal the number of shot lines in the body
+      2. every overlay timecode must match the body time line it covers
+      3. the body must not leak SCENE_JSON internals (coordinates, pose ids)
+      4. every character physically in frame must be bound in the fragment
+      5. a left/right claim in the body must not contradict the overlay geometry
+    """
+    errors: list[str] = []
+    warnings: list[str] = []
+    stats = {"fragments": 0, "overlays": 0, "space_dir": str(space_dir)}
+    index = _space_overlays(space_dir)
+    if not index:
+        stats["status"] = "skipped"
+        return errors, warnings, stats
+    stats["status"] = "checked"
+    name_to_code = {}
+    for code, name in char_names.items():
+        if not name:
+            continue
+        name_to_code[name] = code
+        # 资产名常带括注（「阿泽（全队领队）」），站位层只写主名
+        base = re.split(r"[（(]", name, maxsplit=1)[0].strip()
+        if base:
+            name_to_code.setdefault(base, code)
+    for episode in parsed["episodes"]:
+        episode_code = episode["code"]
+        fragments = index.get(episode_code)
+        if not fragments:
+            continue
+        for shot in episode["shots"]:
+            overlays = fragments.get(shot["code"])
+            if not overlays:
+                continue
+            label = f"{episode_code}/{shot['code']}"
+            prompt = shot["prompts"].get("视频提示词", "")
+            stats["fragments"] += 1
+            stats["overlays"] += len(overlays)
+
+            if model == "h3":
+                rows = H3_SHOT.findall(prompt)
+                body_rows = []
+            else:
+                pattern = ROW_WAN if model == "wan30" else ROW
+                body_rows = [m for m in prompt.split("\n") if pattern.match(m.strip())]
+                rows = body_rows
+
+            if model != "h3":
+                # 站位层按 W18 只覆盖命中风险闸门的镜头，不要求全量；
+                # 因此按 shot 编号（E##_SH##_S##）对齐，而不是按出现顺序 zip。
+                by_index = {}
+                for idx, row in enumerate(rows, 1):
+                    match = pattern.match(row.strip())
+                    if match:
+                        by_index[idx] = f"{match.group('start')}-{match.group('end')}"
+                covered = set()
+                for overlay in overlays:
+                    shot_id = str(overlay.get("shot") or "")
+                    tail = re.search(r"_S(\d+)$", shot_id)
+                    if not tail:
+                        errors.append(
+                            f"{label}: 站位增量 {shot_id or '(缺 shot 字段)'} 的编号不符合 "
+                            "E##_SH##_S## 格式，无法与正文镜头对齐")
+                        continue
+                    idx = int(tail.group(1))
+                    want = by_index.get(idx)
+                    if want is None:
+                        errors.append(
+                            f"{label}: 站位增量 {shot_id} 指向存在的镜头之外"
+                            f"（本段共 {len(rows)} 个镜头）")
+                        continue
+                    covered.add(idx)
+                    got = str(overlay.get("timecode", ""))
+                    if got and got != want:
+                        errors.append(
+                            f"{label}: 站位增量 {shot_id} 的时间码 {got} "
+                            f"与正文 S{idx:02d} 时间行 {want} 不一致")
+                stats.setdefault("coverage", {})[label] = (
+                    f"{len(covered)}/{len(rows)}")
+
+            leak = SPACE_LEAK.search(prompt)
+            if leak:
+                errors.append(
+                    f"{label}: 正文出现站位 JSON 内部写法「{leak.group(0)}」，"
+                    "交付包只写自然语言站位描述")
+
+            bound = set(shot["bindings"].get("角色", []))
+            for overlay in overlays:
+                for char in overlay.get("characters") or []:
+                    if not char.get("inFrame"):
+                        continue
+                    name = str(char.get("name") or "")
+                    code = name_to_code.get(name)
+                    if not code:
+                        warnings.append(
+                            f"{label}: 站位增量 {overlay.get('shot')} 标记 {name} 在画内，"
+                            "但制作包没有同名角色资产")
+                    elif code not in bound:
+                        errors.append(
+                            f"{label}: {name} 在站位增量里位于画内（{overlay.get('shot')}），"
+                            f"但片段未绑定 {code}")
+                    position = char.get("position") or []
+                    if len(position) < 3:
+                        continue
+                    side = _space_screen_side(overlay, position)
+                    if not side:
+                        continue
+                    claim = re.search(
+                        re.escape(name) + r"[^。！？\n]{0,10}?(画面)?(左|右)(侧|边)", prompt)
+                    if claim and claim.group(2) != side:
+                        warnings.append(
+                            f"{label}: 正文写「{name}」在画面{claim.group(2)}侧，"
+                            f"站位增量算出的位置在{side}侧（镜头 {overlay.get('shot')}）")
+                    if name and name not in prompt:
+                        warnings.append(
+                            f"{label}: 站位增量标记 {name} 在画内（{overlay.get('shot')}），"
+                            "但正文没有提到这个人")
+    return errors, warnings, stats
+
+
+def check_outfit_consistency(parsed: dict, char_names: dict,
+                             errors: list[str], warnings: list[str]) -> dict:
+    """Check that costume changes are carried as wearable assets, not lost.
+
+    An outfit variant is registered as a prop-type asset whose image prompt
+    declares its owner (``供 CHAR_02 穿着``). Five checks per fragment:
+      A. a costume word in the shot lines without any bound outfit asset
+      B. a bound outfit asset whose owner is not in the fragment cast
+      C. a bound outfit asset not marked with its owner in 【参考】
+      D. one character wearing two different top garments in one fragment
+      E. a costume word contradicting the character's own fixed outfit
+    """
+    assets = {asset["code"]: asset for asset in parsed["assets"]}
+    outfits: dict[str, str] = {}
+    for code, asset in assets.items():
+        if asset["kind"] != "道具":
+            continue
+        prompt = asset.get("prompt", "")
+        owner = OUTFIT_OWNER.search(prompt)
+        if owner or OUTFIT_MARK.search(prompt):
+            outfits[code] = owner.group(1) if owner else ""
+    stats = {"outfit_assets": len(outfits), "fragments": 0, "outfit_bound": 0}
+    for episode in parsed["episodes"]:
+        for shot in episode["shots"]:
+            label = f"{episode['code']}/{shot['code']}"
+            prompt = shot["prompts"].get("视频提示词", "")
+            if not prompt.strip():
+                continue
+            stats["fragments"] += 1
+            bound_props = shot["bindings"].get("道具", [])
+            bound_chars = shot["bindings"].get("角色", [])
+            bound_outfits = [code for code in bound_props if code in outfits]
+            stats["outfit_bound"] += len(bound_outfits)
+
+            timeline = prompt.split("【时间轴】")[-1].split("【收尾】")[0]
+            reference = prompt.split("【参考】")[-1].split("【公共总规范】")[0]
+
+            for code in bound_outfits:
+                owner = outfits[code]
+                if owner and owner not in bound_chars:
+                    errors.append(
+                        f"{label}: 服装资产 {code} 声明供 {owner} 穿着，"
+                        f"但本片段没有绑定 {owner}")
+                owner_name = char_names.get(owner, "")
+                entry = ""
+                for line in reference.splitlines():
+                    if code in line:
+                        entry = line
+                        break
+                if owner and owner_name and owner_name not in entry and owner not in entry:
+                    errors.append(
+                        f"{label}: 服装资产 {code} 在【参考】里没有写明由谁穿着"
+                        f"（应写 {owner} 或 {owner_name}）")
+
+            variant_words = [word for word in VARIANT_WORDS if word in timeline]
+            per_char: dict = {}
+            for char_code in bound_chars:
+                name = char_names.get(char_code)
+                if not name:
+                    continue
+                worn: set = set()
+                for line in timeline.splitlines():
+                    worn |= _attributed_words(line, name)
+                if worn:
+                    per_char[name] = worn
+            single = len(bound_chars) == 1
+            if single:
+                only = char_names.get(bound_chars[0])
+                if only:
+                    # Only one character in frame: every garment word belongs to them.
+                    per_char[only] = {word for word in OUTFIT_TOP if word in timeline}
+
+            for name, worn in per_char.items():
+                if len(worn) <= 1:
+                    continue
+                lines_of = [line for line in timeline.splitlines() if name in line]
+                if single:
+                    lines_of = timeline.splitlines()
+                has_change = any(CHANGE_VERB.search(line) for line in lines_of)
+                if has_change:
+                    warnings.append(
+                        f"{label}: {name} 在同一片段换了装「{'、'.join(sorted(worn))}」，"
+                        "须在镜头行给出镜内可见的换装动作来源")
+                else:
+                    errors.append(
+                        f"{label}: {name} 在同一片段出现多套上装「{'、'.join(sorted(worn))}」"
+                        "且无换装动作，一个片段内不能换装")
+
+            owners = {outfits[code] for code in bound_outfits if outfits.get(code)}
+            for char_code in bound_chars:
+                name = char_names.get(char_code)
+                asset = assets.get(char_code)
+                if not name or not asset:
+                    continue
+                if char_code in owners:
+                    # A bound outfit supersedes the character's default look.
+                    continue
+                worn = per_char.get(name, set())
+                if not worn:
+                    continue
+                fixed = FIXED_OUTFIT.search(asset.get("prompt", ""))
+                if not fixed:
+                    continue
+                locked = {word for word in OUTFIT_TOP if word in fixed.group(1)}
+                clash = worn - locked
+                if clash:
+                    errors.append(
+                        f"{label}: {name} 的角色资产锁定「{fixed.group(1).strip()[:26]}」，"
+                        f"镜头行却写成「{'、'.join(sorted(clash))}」——"
+                        "须补服装变体资产并在【参考】写明谁穿，或改回锁定装")
+
+            if variant_words and not bound_outfits:
+                warnings.append(
+                    f"{label}: 镜头行出现场合级服装词「{'、'.join(sorted(set(variant_words)))}」"
+                    "但本片段没有绑定服装变体资产（服装须单独出图并写明谁穿）")
+    return stats
+
+
 def validate(source: str, policy: dict, model: str = "seedance25",
              tier: str | None = None, h3_segments: str = "app",
-             baseline: str | None = None) -> dict:
+             baseline: str | None = None,
+             space_dir: Path | None = None,
+             space_exempt: bool = False) -> dict:
     errors: list[str] = []
     warnings: list[str] = []
     request_bytes = len(json.dumps(
@@ -595,6 +1093,7 @@ def validate(source: str, policy: dict, model: str = "seedance25",
         errors.append("至少需要一个剧集")
     codes: dict[str, str] = {}
     char_names: dict[str, str] = {}
+    asset_prompts: dict[str, str] = {}
     names: set[tuple[str, str]] = set()
     for asset in assets:
         code, kind = asset["code"], asset["kind"]
@@ -603,6 +1102,7 @@ def validate(source: str, policy: dict, model: str = "seedance25",
         codes[code] = kind
         if kind == "角色":
             char_names[code] = asset["name"]
+        asset_prompts[code] = asset["prompt"]
         name_key = (kind, " ".join(asset["name"].casefold().split()))
         if name_key in names:
             errors.append(f"同类型资产名称重复：{asset['name']}")
@@ -618,6 +1118,12 @@ def validate(source: str, policy: dict, model: str = "seedance25",
                     "项目里已有提示词时以项目为准）")
             else:
                 errors.append(f"{code}: 缺少资产名称或图片提示词")
+        if kind == "道具" and asset["prompt"].strip() and re.search(r"[字条纸条便签沙字字痕]", asset["name"]):
+            # 带字道具：资产图不得要求可读汉字（图片模型渲染中文必错）
+            if re.search(r"可读|可辨读|端正|正确的中文", asset["prompt"]) and \
+                    not re.search(r"不要|不构成|不可辨读|不得", asset["prompt"]):
+                warnings.append(f"{code}「{asset['name']}」: 带字道具的资产图不应要求可读文字——"
+                                "资产图只给抽象墨痕/笔道形态，实际文字由提示词层声明")
         if kind in ("角色", "场景") and asset["prompt"].strip():
             ratio = policy["assets"]["character_ratio" if kind == "角色" else "scene_ratio"]
             if ratio not in asset["prompt"]:
@@ -625,6 +1131,8 @@ def validate(source: str, policy: dict, model: str = "seedance25",
             layout = "四视图" if kind == "角色" else "全景"
             if layout not in asset["prompt"]:
                 errors.append(f"{code}: 图片提示词缺少默认{layout}版式")
+            if kind == "角色":
+                _check_character_prompt_fields(asset, policy, warnings)
     seen_episodes = set()
     stats = []
     for episode in episodes:
@@ -680,11 +1188,33 @@ def validate(source: str, policy: dict, model: str = "seedance25",
                                       policy, errors, char_names,
                                       oner=shot.get("oner", False), model=model,
                                       warnings=warnings, tier=tier,
+                                      asset_codes=set(codes),
+                                      asset_prompts=asset_prompts,
                                       extra_fields={k: v for k, v in shot["prompts"].items()
                                                     if k != "视频提示词"}))
+    outfit_stats = check_outfit_consistency(parsed, char_names, errors, warnings)
+    space_stats = {"status": "skipped"}
+    if space_dir is not None:
+        space_errors, space_warnings, space_stats = check_space_sync(
+            parsed, char_names, Path(space_dir), model=model)
+        errors.extend(space_errors)
+        warnings.extend(space_warnings)
+    if space_stats.get("status") != "checked":
+        risky = risk_shot_count(parsed, char_names)
+        space_stats["risk_shots"] = risky
+        if risky and not space_exempt:
+            errors.append(
+                f"站位层缺失：本包含 {risky} 个多人同框镜头（命中风险闸门），但未找到可用的"
+                f"站位增量（{space_dir or '内部/04b-站位图'}）；W18 要求在阶段 2 出场景基底、"
+                f"阶段 3 出镜级增量后再编译正文。如确不建，须在 内部/00-项目输入单.md 登记"
+                f"「站位层：豁免（理由：…）」")
+        elif space_exempt:
+            extra = f"（本包 {risky} 个多人同框镜头）" if risky else ""
+            warnings.append(f"站位层：已按输入单登记豁免，跳过站位交叉校验{extra}")
     return {"ok": not errors, "episodes": len(episodes), "segments": len(stats),
             "assets": len(assets), "import_request_bytes": request_bytes,
-            "stats": stats, "errors": errors, "warnings": warnings}
+            "stats": stats, "space": space_stats, "outfit": outfit_stats,
+            "errors": errors, "warnings": warnings}
 
 
 def main() -> int:
@@ -706,6 +1236,9 @@ def main() -> int:
     parser.add_argument("--sequel-baseline", type=Path, default=None,
                         help="续集基线包路径：已导入目标项目的上一集《精简制作包.md》。"
                              "提供后按线上模板的续集规范检查集代码归属、资产名称对齐与代码冲突")
+    parser.add_argument("--space-dir", type=Path, default=None,
+                        help="站位增量目录（E28/W18）。缺省时按制作包同级 "
+                             "内部/04b-站位图 自动查找；找不到则跳过站位交叉校验")
     parser.add_argument("--json", action="store_true", help="输出 JSON 结果")
     args = parser.parse_args()
     try:
@@ -714,17 +1247,33 @@ def main() -> int:
         baseline = None
         if args.sequel_baseline:
             baseline = args.sequel_baseline.read_text(encoding="utf-8")
+        space_dir = args.space_dir
+        if space_dir is None:
+            candidate = args.file.resolve().parent
+            for part in SPACE_DEFAULT_DIR:
+                candidate = candidate / part
+            space_dir = candidate
         result = validate(source, policy, model=args.model, tier=args.tier,
-                          h3_segments=args.h3_segments, baseline=baseline)
+                          h3_segments=args.h3_segments, baseline=baseline,
+                          space_dir=space_dir,
+                          space_exempt=space_exempted(args.file))
     except (OSError, UnicodeError, ValueError, KeyError, TypeError) as exc:
         print(f"无法校验文件：{exc}", file=sys.stderr)
         return 2
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
     else:
+        space = result.get("space", {})
+        outfit = result.get("outfit", {})
         print(f"精简制作包：{'通过' if result['ok'] else '失败'}；"
               f"{result['episodes']} 集、{result['segments']} 片段、{result['assets']} 项资产"
-              + ("（续集校验）" if args.sequel_baseline else ""))
+              + ("（续集校验）" if args.sequel_baseline else "")
+              + (f"；服装变体：{outfit.get('outfit_assets', 0)} 件 / "
+                 f"{outfit.get('outfit_bound', 0)} 处绑定"
+                 if outfit.get("outfit_assets") else "")
+              + (f"；站位交叉校验：{space.get('status')}"
+                 f"（{space.get('fragments', 0)} 片段 / {space.get('overlays', 0)} 增量）"
+                 if space.get("status") == "checked" else "；站位交叉校验：未启用"))
         for item in result["errors"]:
             print(f"  错误：{item}")
         for item in result.get("warnings", []):

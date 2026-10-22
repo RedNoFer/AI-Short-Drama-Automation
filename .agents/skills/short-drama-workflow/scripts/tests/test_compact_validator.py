@@ -105,7 +105,7 @@ WAN_ROWS = "\n".join([
     '1.5-4秒，硬切，牛皮纸包裹特写，绳结与纸纹清晰可辨。',
     '4-9秒，硬切，他拆开包装，泛黄古图徐徐展开，镜头缓推。',
     '9-14.5秒，硬切，字条特写，他瞳孔微收，指节泛白。',
-    '14.5-22秒，硬切，五人围拢，焦点在字迹与面孔之间缓慢转换。',
+    '14.5-22秒，硬切，五人围拢，焦点在字迹与面孔之间缓慢转换。本镜画面内恰好五人：左起阿泽、苏晚、老杨、许棠、小林；每人只有一个身体、一张脸；不出现第六人。',
     '22-30秒，硬切，古图边缘银纹微亮，他收图入怀，雾从车头漫过。',
 ])
 
@@ -180,18 +180,55 @@ class CompactValidatorTests(unittest.TestCase):
 
     def test_wan30_decimal_and_long_prompt_passes(self):
         pkg = make_package(rows=WAN_ROWS, pad=WAN_PAD)
-        result = validator.validate(pkg, POLICY, model="wan30")
+        result = validator.validate(pkg, POLICY, model="wan30", space_exempt=True)
         self.assertTrue(result["ok"], result["errors"])
         self.assertEqual(result["stats"][0]["model"], "wan30")
         # 同一包在 Seedance 轨下必须失败（小数行 + 超 3000 字符）
-        bad = validator.validate(pkg, POLICY)
+        bad = validator.validate(pkg, POLICY, space_exempt=True)
         self.assertFalse(bad["ok"])
+
+    def test_group_shot_requires_headcount_lock(self):
+        """四人以上同框必须写人数锁定句（WAN30-02 第 3 条）。"""
+        rows = WAN_ROWS.replace(
+            "本镜画面内恰好五人：左起阿泽、苏晚、老杨、许棠、小林；"
+            "每人只有一个身体、一张脸；不出现第六人。", "")
+        pkg = make_package(rows=rows, pad=WAN_PAD)
+        result = validator.validate(pkg, POLICY, model="wan30", space_exempt=True)
+        self.assertFalse(result["ok"])
+        self.assertTrue(any("人数锁定句" in e for e in result["errors"]), result["errors"])
+
+    def test_five_person_lock_may_name_only_three(self):
+        """五人锁定句允许只点名三人、另两人按服装特征定位（2026-10-22 裁决）。"""
+        rows = WAN_ROWS.replace(
+            "本镜画面内恰好五人：左起阿泽、苏晚、老杨、许棠、小林；"
+            "每人只有一个身体、一张脸；不出现第六人。",
+            "本镜画面内恰好五人：左起苏晚、老杨、阿泽、黑色机能马甲的年轻女性、亮蓝防风外套的少年；"
+            "每人只有一个身体、一张脸；不出现第六人。")
+        pkg = make_package(rows=rows, pad=WAN_PAD)
+        result = validator.validate(pkg, POLICY, model="wan30", space_exempt=True)
+        self.assertTrue(result["ok"], result["errors"])
+
+    def test_first_beat_must_not_write_hard_cut(self):
+        """首拍不得写「硬切」——首镜直写开场，硬切只用于其后每一拍。"""
+        rows = WAN_ROWS.replace("0-1.5秒，阿泽立在", "0-1.5秒，硬切，阿泽立在", 1)
+        pkg = make_package(rows=rows, pad=WAN_PAD)
+        result = validator.validate(pkg, POLICY, model="wan30", space_exempt=True)
+        self.assertFalse(result["ok"])
+        self.assertTrue(any("首拍不得写" in e for e in result["errors"]), result["errors"])
+
+    def test_public_shot_count_declaration_must_match(self):
+        """公共总规范自报的「全段 N 拍 M 次硬切」须与正文一致。"""
+        pkg = make_package(rows=WAN_ROWS, pad=WAN_PAD)
+        pkg = pkg.replace("【公共总规范】", "【公共总规范】全段 9 拍 8 次硬切；", 1)
+        result = validator.validate(pkg, POLICY, model="wan30", space_exempt=True)
+        self.assertFalse(result["ok"])
+        self.assertTrue(any("与正文不符" in e for e in result["errors"]), result["errors"])
 
     def test_wan30_duration_bounds(self):
         rows24 = WAN_ROWS.replace("14.5-22秒", "14.5-20秒").replace("22-30秒", "20-24秒")
         pkg = make_package(rows=rows24, pad=WAN_PAD, dur=24)
-        self.assertTrue(validator.validate(pkg, POLICY, model="wan30")["ok"])
-        self.assertFalse(validator.validate(pkg, POLICY)["ok"])
+        self.assertTrue(validator.validate(pkg, POLICY, model="wan30", space_exempt=True)["ok"])
+        self.assertFalse(validator.validate(pkg, POLICY, space_exempt=True)["ok"])
 
     def test_wan30_granularity_rejected(self):
         bad_rows = WAN_ROWS.replace("1.5-4秒", "1.7-4秒", 1)
