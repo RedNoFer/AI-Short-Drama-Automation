@@ -307,14 +307,17 @@ def check_prompt(prompt: str, episode: str, shot: str, duration: int, bindings: 
     fuzzy_re = re.compile(r"其余[三四五六七八九]人|另外[三四五六七八九]道身影|其余人")
     for index, row in enumerate(rows, 1):
         body = row["text"]
-        named = sum(1 for name in ("阿泽", "苏晚", "老杨", "许棠", "小林", "黑衣人") if name in body)
+        # 「（空间：…）」是站位层编译出的机位元数据，不是正文点名；
+        # 统计具名人数/人数锁定句时必须先剥掉，否则会把画外说明误当成新增角色。
+        core = body.split("（空间：")[0]   # 子句内含括号（如「（坐驾驶位）」），不能用 [^）]*
+        named = sum(1 for name in ("阿泽", "苏晚", "老杨", "许棠", "小林", "黑衣人") if name in core)
         # 五人群像：数词后必须紧跟群像/站位类名词（避免把「五个人各自…」误判为群像镜）
         five = re.search(r"(?:五(?:人|名|道|个)(?:人|道|个)?(?:全景|远景|剪影|群像|同框|人影|身影|围拢|站|立|俯身|并肩|错开|散在|散落|不动)|[四五六]个人(?:各自|同时|一齐|陆续|先后|都|沉默|错开|散开|散立|不动|上车|下车|错落|围拢|散在|站在|围在|挤在|依次|一前排|排成|在)|[四五六](?:名|个|道)(?:人|身影|人影|剪影|轮廓)|[四五六]人(?:的|各|在|错))", body)
-        if (named >= 4 or five) and not lock_re.search(body):
+        if (named >= 4 or five) and not lock_re.search(core):
             errors.append(f"{label}: 第 {index} 个时间行（具名 {named} 人{'、含五人群像' if five else ''}）须写人数锁定句"
                           "（三人如「本镜画面内恰好三人：左起阿泽、苏晚、老杨；每人只有一个身体、一张脸；不出现第四人。」；"
                           "五人只点名三人、另两人按服装定位，如「本镜画面内恰好五人：左起苏晚、老杨、阿泽、黑色机能马甲的年轻女性、亮蓝防风外套的少年；每人只有一个身体、一张脸；不出现第六人。」）")
-        fuzzy = fuzzy_re.search(body)
+        fuzzy = fuzzy_re.search(core)
         if fuzzy and (named >= 4 or five):
             errors.append(f"{label}: 第 {index} 个时间行用了模糊指代「{fuzzy.group(0)}」，"
                           "须改为逐个点名并给左起位置（WAN30-02 第 3 条）")
@@ -909,9 +912,11 @@ def check_space_sync(parsed: dict, char_names: dict, space_dir: Path,
                     name = str(char.get("name") or "")
                     code = name_to_code.get(name)
                     if not code:
-                        warnings.append(
-                            f"{label}: 站位增量 {overlay.get('shot')} 标记 {name} 在画内，"
-                            "但制作包没有同名角色资产")
+                        # 剪影（黑衣人）不是角色资产：只靠布光与雨幕处理，不要求绑定
+                        if not char.get("silhouette"):
+                            warnings.append(
+                                f"{label}: 站位增量 {overlay.get('shot')} 标记 {name} 在画内，"
+                                "但制作包没有同名角色资产")
                     elif code not in bound:
                         errors.append(
                             f"{label}: {name} 在站位增量里位于画内（{overlay.get('shot')}），"
@@ -922,11 +927,13 @@ def check_space_sync(parsed: dict, char_names: dict, space_dir: Path,
                     side = _space_screen_side(overlay, position)
                     if not side:
                         continue
+                    # 只认「名字＋在…左/右侧」这种明确的画面方位；「坐在他左侧」是座位关系、
+                    # 「黑衣人影、画面右侧是…」的左右属于下一个人，都不能算到这个头上。
                     claim = re.search(
-                        re.escape(name) + r"[^。！？\n]{0,10}?(画面)?(左|右)(侧|边)", prompt)
-                    if claim and claim.group(2) != side:
+                        re.escape(name) + r"在[^。！？\n]{0,4}?(?:画面)?(左|右)(侧|边)", prompt)
+                    if claim and claim.group(1) != side:
                         warnings.append(
-                            f"{label}: 正文写「{name}」在画面{claim.group(2)}侧，"
+                            f"{label}: 正文写「{name}」在画面{claim.group(1)}侧，"
                             f"站位增量算出的位置在{side}侧（镜头 {overlay.get('shot')}）")
                     if name and name not in prompt:
                         warnings.append(

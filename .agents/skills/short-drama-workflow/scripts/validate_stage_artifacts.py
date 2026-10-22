@@ -41,6 +41,39 @@ SCENE_HDR = re.compile(r"场\s*\d+-\d+")
 EXEMPT_RE = re.compile(r"站位层[：:]\s*豁免")
 # 阶段门豁免（仅限旧版重制等确实无法回补的项，必须写理由；每项都按提醒报出）
 STAGE_EXEMPT_RE = re.compile(r"阶段门豁免[：:]\s*(.+)$", re.M)
+_POLICY_CACHE: dict | None = None
+
+
+def _policy() -> dict:
+    """读取项目策略（缺文件时降级为空字典，不阻断门本身）。"""
+    global _POLICY_CACHE
+    if _POLICY_CACHE is None:
+        path = Path(__file__).resolve().parent.parent / "policy.json"
+        try:
+            _POLICY_CACHE = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            _POLICY_CACHE = {}
+    return _POLICY_CACHE
+
+
+def _main_name(raw: str) -> str:
+    """「阿泽（领队）」→「阿泽」，用于账目比对。"""
+    return re.split(r"[（(]", raw or "")[0].strip()
+
+
+def _load_crosscheck():
+    """加载同目录的视感交叉校验模块（缺失即报错，不静默跳过）。"""
+    import importlib.util
+
+    path = Path(__file__).resolve().parent / "crosscheck_storyboard.py"
+    if not path.is_file():
+        raise RuntimeError(f"找不到 {path}")
+    spec = importlib.util.spec_from_file_location("crosscheck_storyboard", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"无法加载 {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def stage_exemptions(workdir: Path) -> set:
@@ -127,6 +160,104 @@ def _pick(internal: Path, patterns: list) -> Path | None:
     return None
 
 
+# ---------------------------------------------------------------- 结构检查
+#
+# 2026-10-23 审计：阶段 2/3 的「必登内容」原来只查关键字是否出现，写一个空标题、
+# 贴一张空表格就能过门。这比「最后才审」更危险——它给了「已过门」的假信号。
+# 以下把关键字检查升级为结构检查：标题下必须有正文，表格必须有数据行。
+
+HEADING = re.compile(r"^(#{2,4})\s+(.+?)\s*$")
+DIM_WORDS = ("站位", "朝向", "视线", "道具", "光向", "情绪", "轴线", "战损", "承接")
+
+
+def _sections(text: str) -> list[tuple[str, str]]:
+    """按 2–4 级标题切块，返回 [(标题, 正文)]，保持文件顺序。"""
+    out: list[tuple[str, str]] = []
+    title: str | None = None
+    buf: list[str] = []
+    for line in text.split("\n"):
+        match = HEADING.match(line)
+        if match:
+            if title is not None:
+                out.append((title, "\n".join(buf)))
+            title = match.group(2)
+            buf = []
+        elif title is not None:
+            buf.append(line)
+    if title is not None:
+        out.append((title, "\n".join(buf)))
+    return out
+
+
+def _table_rows(body: str) -> list[list[str]]:
+    """取 markdown 表格的数据行（跳过表头与 |---| 分隔行）。"""
+    rows: list[list[str]] = []
+    seen_header = False
+    for line in body.split("\n"):
+        stripped = line.strip()
+        if not stripped.startswith("|"):
+            continue
+        if re.fullmatch(r"\|[\s|:\-—]+\|?", stripped):
+            continue
+        cells = [c.strip() for c in stripped.strip("|").split("|")]
+        if not seen_header:
+            seen_header = True
+            continue
+        if any(cells):
+            rows.append(cells)
+    return rows
+
+
+def _find_section(text: str, aliases: tuple) -> tuple[str, str] | None:
+    for title, body in _sections(text):
+        if any(alias in title for alias in aliases):
+            return title, body
+    return None
+
+
+def _require_section(errors: list, text: str, label: str, aliases: tuple, *,
+                     min_chars: int = 30, min_rows: int = 0,
+                     need_words: tuple = ()) -> str | None:
+    """标题存在 + 正文非空 + 表格有数据行 + 关键维度词在场。返回该段正文。"""
+    hit = _find_section(text, aliases)
+    if hit is None:
+        errors.append(f"{label} 缺必登内容「{aliases[0]}」")
+        return None
+    title, body = hit
+    stripped = body.strip()
+    if len(stripped) < min_chars:
+        errors.append(f"{label}「{title}」是空标题（正文仅 {len(stripped)} 字符，至少需 {min_chars}）")
+        return body
+    if min_rows:
+        rows = _table_rows(body)
+        if len(rows) < min_rows:
+            errors.append(f"{label}「{title}」表格只有 {len(rows)} 行数据（至少需 {min_rows} 行，空表格不算登记）")
+    if need_words:
+        missing = [w for w in need_words if w not in body]
+        if len(missing) > len(need_words) - 3:
+            errors.append(f"{label}「{title}」缺状态维度：{'、'.join(missing)}")
+    return body
+
+
+def _character_field_warnings(asset_text: str, policy: dict, warnings: list) -> None:
+    """阶段 2 就报角色图片提示词的九块字段缺口（原来只在最终包上提醒）。
+
+    只报「哪一块没写」，不判断写得好不好——细节质量仍由角色美工账与独立评审承担。
+    """
+    groups = policy.get("assets", {}).get("character_prompt_groups", {})
+    if not groups:
+        return
+    blocks = re.split(r"^### 角色\s+([A-Za-z][A-Za-z0-9_-]*)｜(.+)$", asset_text, flags=re.M)
+    for i in range(1, len(blocks) - 2, 3):
+        code, name, body = blocks[i], _main_name(blocks[i + 1]), blocks[i + 2]
+        missing = [label for label, words in groups.items()
+                   if not any(word in body for word in words)]
+        if missing:
+            warnings.append(
+                f"阶段2 {code}「{name}」角色图片提示词缺美工字段：{'；'.join(missing)}"
+                "（素颜、无饰品也须写明；字段在场不等于写得好）")
+
+
 # 阶段2 必有的落盘物：语义名 → 可接受的命名模式（覆盖 0X- 两套模板命名）
 STAGE2_ARTIFACTS = {
     "项目输入单": ["00-*输入单*.md", "00-*.md"],
@@ -154,16 +285,42 @@ def stage2(workdir: Path, names: list) -> tuple[list, list]:
     )
     asset_text = "\n".join(f.read_text(encoding="utf-8") for f in asset_files)
     exempt_items = stage_exemptions(workdir)
-    for kw, aliases in {
-        "声线母版": ["声线母版", "声线锚点"],
-        "角色美工账": ["角色美工账", "美工账"],
-        "持物链": ["持物链", "持物链承接", "道具链", "持物表"],
-    }.items():
-        if asset_text and not any(a in asset_text for a in aliases):
-            if kw in exempt_items:
-                warnings.append(f"阶段2「{kw}」已登记阶段门豁免，按缺口放行")
-            else:
-                errors.append(f"阶段2 资产类文件缺少必登内容「{kw}」")
+
+    def _content(label: str, aliases: tuple, **kw) -> None:
+        if label in exempt_items:
+            warnings.append(f"阶段2「{label}」已登记阶段门豁免，按缺口放行")
+            return
+        body = _require_section(errors, asset_text, "阶段2", aliases, **kw)
+        if label == "角色美工账" and body:
+            # 每个角色必须在美工账里有一行（只写在提示词里、账上没记＝未定版）
+            names = [_main_name(m.group(1)) for m in
+                     re.finditer(r"^### 角色\s+[A-Za-z][A-Za-z0-9_-]*｜(.+)$", asset_text, flags=re.M)]
+            absent = [n for n in names if n and n not in body]
+            if absent:
+                errors.append(f"阶段2 角色美工账缺这些角色的行：{'、'.join(absent)}")
+
+    _content("声线母版", ("声线母版", "声线锚点"), min_chars=40)
+    _content("角色美工账", ("角色美工账", "美工账"), min_chars=30)
+    _content("持物链", ("持物链", "持物表", "道具链"), min_chars=20)
+    if "持物链" not in exempt_items:
+        hit = _find_section(asset_text, ("持物链", "持物表", "道具链"))
+        if hit and hit[1].strip() and "→" not in hit[1] and "->" not in hit[1] \
+                and not _table_rows(hit[1]):
+            errors.append("阶段2 持物链需逐道具一行（获取点→持有人变更→去向），"
+                          "既无箭头链也无表格行视为未登记")
+
+    # 阶段 2 独立评审：资产母版是全剧污染源，不能只靠生产方自检
+    if "阶段2评审" in exempt_items or "资产评审" in exempt_items:
+        warnings.append("阶段2 资产独立评审已登记阶段门豁免，按缺口放行")
+    else:
+        review = _pick(internal, ["03b-*评审*.md", "03b-*.md", "0[0-9]-*资产评审*.md"])
+        if review is None:
+            errors.append("阶段2 缺独立评审记录（内部/03b-资产评审.md）：资产母版与声线母版"
+                          "须由与起草方隔离的评审子任务复核，不能只靠生产方自检")
+        elif len(review.read_text(encoding="utf-8").strip()) < 60:
+            errors.append(f"阶段2 独立评审记录「{review.name}」内容过短（<60 字符），视为未评审")
+
+    _character_field_warnings(asset_text, _policy(), warnings)
     # 站位层：风险场景必须各有基底
     brief = _read(_pick(internal, STAGE2_ARTIFACTS["项目输入单"]) or internal / "00-项目输入单.md")
     exempt = bool(EXEMPT_RE.search(brief))
@@ -211,17 +368,32 @@ def stage3(workdir: Path, names: list) -> tuple[list, list]:
         return errors, warnings
     text = table.read_text(encoding="utf-8") if table else "\n".join(p.read_text(encoding="utf-8") for p in shards)
     table_name = table.name if table else f"分镜编译/（{len(shards)} 集）"
-    for kw, aliases in {
-        "视感自查": ["视感自查"],
-        "上下文衔接自查": ["上下文衔接自查", "上下文衔接"],
-        "群像自检": ["群像自检", "群像自查"],
-        "持物链承接": ["持物链承接", "持物链", "道具链"],
-    }.items():
-        if not any(a in text for a in aliases):
-            if kw in stage_exemptions(workdir):
-                warnings.append(f"阶段3「{kw}」已登记阶段门豁免，按缺口放行")
-            else:
-                errors.append(f"内部/{table_name} 缺必登内容「{kw}」")
+    exempt_items = stage_exemptions(workdir)
+
+    def _content(label: str, aliases: tuple, **kw) -> None:
+        if label in exempt_items:
+            warnings.append(f"阶段3「{label}」已登记阶段门豁免，按缺口放行")
+            return
+        _require_section(errors, text, "阶段3", aliases, **kw)
+
+    _content("视感自查", ("视感自查", "逐镜视感", "视感统计"), min_chars=30)
+    _content("上下文衔接自查", ("上下文衔接",), min_chars=40, min_rows=1,
+             need_words=DIM_WORDS)
+    _content("群像自检", ("群像自检", "群像自查"), min_chars=20, min_rows=1)
+    _content("持物链承接", ("持物链承接", "持物链", "道具链"), min_chars=20, min_rows=1)
+
+    # 视感自查交叉校验：声明值必须与逐镜表实算值一致，配额按实算值判定
+    if "视感交叉校验" in exempt_items or "视感自查" in exempt_items:
+        warnings.append("阶段3 视感交叉校验已登记阶段门豁免，按缺口放行")
+    else:
+        try:
+            cross = _load_crosscheck()
+            c_errors, c_warnings = cross.check_text(text, table_name)
+        except Exception as exc:  # noqa: BLE001 - 脚本缺失不能静默放行
+            errors.append(f"阶段3 视感交叉校验无法执行（{exc}）：需同目录 scripts/crosscheck_storyboard.py")
+        else:
+            errors.extend(f"阶段3 {e}" for e in c_errors)
+            warnings.extend(f"阶段3 {w}" for w in c_warnings)
     brief = _read(_pick(internal, STAGE2_ARTIFACTS["项目输入单"]) or internal / "00-项目输入单.md")
     exempt = bool(EXEMPT_RE.search(brief))
     risk = risk_shots_from_text(text, names)
@@ -243,6 +415,60 @@ def stage3(workdir: Path, names: list) -> tuple[list, list]:
                     errors.append(f"{o.name} 缺字段 {key}")
         if (risk or overlays) and not (space / "站位继承表.md").exists():
             errors.append("阶段3 缺内部/04b-站位图/站位继承表.md（由 scripts/build_blocking_table.py 生成）")
+    return errors, warnings
+
+
+def stage35(workdir: Path, names: list) -> tuple[list, list]:
+    """阶段 3.5 打斗路由：A/B/C 判定必须落盘。
+
+    为什么单独设门（2026-10-23 审计）：A 级「一镜到底」会豁免镜数带与硬切计数，
+    等于绕开 R8 的机检；而 04b-打斗路由判定表 此前没有任何脚本或门检查——
+    一个可以合法豁免硬规的出口，没人守。
+    """
+    errors: list[str] = []
+    warnings: list[str] = []
+    internal = workdir / "内部"
+    exempt_items = stage_exemptions(workdir)
+    if "打斗路由" in exempt_items or "阶段3.5" in exempt_items:
+        warnings.append("阶段3.5 打斗路由已登记阶段门豁免，按缺口放行")
+        return errors, warnings
+
+    path = _pick(internal, ["04b-*打斗*.md", "04b-*路由*.md", "*打斗路由*.md"])
+    if path is None:
+        errors.append("阶段3.5 缺打斗路由判定表（内部/04b-打斗路由判定表.md）："
+                      "逐片段 A/B/C 判定；全剧无打斗也须写一行「全剧无打斗段，逐片段均为 C」")
+        return errors, warnings
+    text = path.read_text(encoding="utf-8")
+    if len(text.strip()) < 40:
+        errors.append(f"阶段3.5「{path.name}」内容过短（<40 字符），视为未判定")
+        return errors, warnings
+
+    rows = _table_rows(text)
+    grades: list[str] = []
+    for row in rows:
+        for cell in row:
+            token = cell.strip()
+            if re.fullmatch(r"[ABC]", token):
+                grades.append(token)
+                break
+            if re.match(r"^[ABC]\s*[级—\-－]", token):
+                grades.append(token[0])
+                break
+    if not grades:
+        if re.search(r"全剧\s*无打斗|均为\s*C", text):
+            warnings.append("阶段3.5 全剧无打斗段，按「均为 C」声明放行")
+            return errors, warnings
+        errors.append(f"阶段3.5「{path.name}」未识别到 A/B/C 等级：需逐片段一行，等级单列一格")
+        return errors, warnings
+
+    if "A" in grades:
+        for word, hint in (("拍点", "A 级须给拍点逐镜表"), ("一镜到底", "A 级须标明一镜到底段")):
+            if word not in text:
+                errors.append(f"阶段3.5 有 A 级判定但缺「{word}」：{hint}")
+        if "证据" not in text and "原句" not in text:
+            errors.append("阶段3.5 A 级判定缺原文证据（须引用剧本/原文原句）")
+    warnings.append(f"阶段3.5 判定表含 {len(grades)} 条片段判定（A {grades.count('A')} / "
+                    f"B {grades.count('B')} / C {grades.count('C')}）")
     return errors, warnings
 
 
@@ -276,7 +502,7 @@ def stage4(workdir: Path, names: list) -> tuple[list, list]:
 def main() -> int:
     ap = argparse.ArgumentParser(description="阶段出口门：检查各阶段的落盘物是否齐备")
     ap.add_argument("workdir", type=Path, help="作品目录（含 内部/）")
-    ap.add_argument("--stage", choices=["2", "3", "4", "all"], default="all")
+    ap.add_argument("--stage", choices=["2", "3", "3.5", "4", "all"], default="all")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
@@ -285,11 +511,11 @@ def main() -> int:
         print(f"作品目录不存在：{workdir}", file=sys.stderr)
         return 2
     names = char_names(workdir)
-    stages = ["2", "3", "4"] if args.stage == "all" else [args.stage]
+    stages = ["2", "3", "3.5", "4"] if args.stage == "all" else [args.stage]
     all_errors: list[str] = []
     all_warnings: list[str] = []
     for st in stages:
-        fn = {"2": stage2, "3": stage3, "4": stage4}[st]
+        fn = {"2": stage2, "3": stage3, "3.5": stage35, "4": stage4}[st]
         errs, warns = fn(workdir, names)
         for e in errs:
             all_errors.append(f"[阶段{st}] {e}")

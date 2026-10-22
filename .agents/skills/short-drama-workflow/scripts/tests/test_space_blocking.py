@@ -170,6 +170,84 @@ class SpaceBlockingTest(unittest.TestCase):
         errors, _ = run_docs({"SCENE_LOC_02.json": BASE, "E01_SH01_S01.json": doc})
         self.assertEqual([e for e in errors if "camera" in e], [])
 
+    def test_overhead_roof_does_not_block_exit_path(self):
+        """车顶/顶棚在头顶：人物从车内下车必然从其正投影下方穿过，不算穿模。"""
+        import copy
+        base = copy.deepcopy(BASE)
+        base["props"].append({"id": "prop_roof", "name": "车顶", "kind": "wall",
+                              "size": [1.95, 0.08, 4.6], "position": [0, 1.72, 0]})
+        overlay = copy.deepcopy(OVERLAY)
+        overlay["characters"][0]["movementPath"] = [[0, 0, 0.8], [0, 0, -0.8]]
+        errors, _ = run_docs({"SCENE_LOC_02.json": base, "ovl.json": overlay})
+        self.assertFalse(any("穿过道具 prop_roof" in e for e in errors), errors)
+
+    def test_low_car_roof_is_overhead_too(self):
+        """车内顶棚 y=1.30、厚 0.06：坐姿通过时仍在头顶之上，不算穿模。"""
+        import copy
+        base = copy.deepcopy(BASE)
+        base["props"].append({"id": "prop_roof_low", "name": "车内顶棚", "kind": "wall",
+                              "size": [1.95, 0.06, 4.6], "position": [0, 1.30, 0]})
+        overlay = copy.deepcopy(OVERLAY)
+        overlay["characters"][0]["movementPath"] = [[0, 0.45, 0.8], [0, 0.45, -0.8]]
+        errors, _ = run_docs({"SCENE_LOC_02.json": base, "ovl.json": overlay})
+        self.assertFalse(any("prop_roof_low" in e for e in errors), errors)
+
+    def test_thick_low_beam_still_blocks(self):
+        """低矮但厚的横梁（y=1.30、厚 0.4）不是顶棚，仍然要拦。"""
+        import copy
+        base = copy.deepcopy(BASE)
+        base["props"].append({"id": "prop_beam", "name": "横梁", "kind": "box",
+                              "size": [1.95, 0.40, 0.4], "position": [0, 1.30, 0]})
+        overlay = copy.deepcopy(OVERLAY)
+        overlay["characters"][0]["movementPath"] = [[0, 0.45, 0.8], [0, 0.45, -0.8]]
+        errors, _ = run_docs({"SCENE_LOC_02.json": base, "ovl.json": overlay})
+        self.assertTrue(any("prop_beam" in e for e in errors), errors)
+
+    def test_ground_wall_still_blocks_path(self):
+        """有厚度的地面墙仍然拦动线（别把上一条放宽成「什么都穿过」）。"""
+        import copy
+        overlay = copy.deepcopy(OVERLAY)
+        overlay["characters"][0]["movementPath"] = [[0, 0, 1.2], [0, 0, -3.0]]
+        errors, _ = run_docs({"SCENE_LOC_02.json": copy.deepcopy(BASE), "ovl.json": overlay})
+        self.assertTrue(any("穿过道具 prop_wall" in e for e in errors), errors)
+
+    def test_held_prop_is_not_a_static_obstacle(self):
+        """手持道具随持有人移动：旁人贴近它不算撞到实体。"""
+        import copy
+        base = copy.deepcopy(BASE)
+        base["props"].append({"id": "PROP_05", "name": "字条", "kind": "box",
+                              "size": [0.12, 0.12, 0.12], "position": [0.2, 1.18, 1.2],
+                              "heldBy": "char_sw"})
+        errors, warnings = run_docs({"SCENE_LOC_02.json": base, "ovl.json": copy.deepcopy(OVERLAY)})
+        self.assertFalse(any("PROP_05" in e for e in errors), errors)
+        self.assertFalse(any("PROP_05" in w for w in warnings), warnings)
+
+    def test_boarding_path_into_vehicle_is_clean(self):
+        """上车：动线端点落在车舱内，不算穿过车体（经车门）。"""
+        import copy
+        base = copy.deepcopy(BASE)
+        base["props"].append({"id": "prop_car", "name": "越野车", "kind": "vehicle",
+                              "size": [2.1, 0.72, 5.8], "position": [0, 0, 0],
+                              "semanticType": "vehicle"})
+        overlay = copy.deepcopy(OVERLAY)
+        overlay["characters"][0]["movementPath"] = [[0, 0, 3.4], [0, 0.45, -0.55]]
+        overlay["characters"][0]["posePreset"] = "sit"
+        overlay["characters"][0]["position"] = [0, 0.45, -0.55]
+        errors, _ = run_docs({"SCENE_LOC_02.json": base, "ovl.json": overlay})
+        self.assertFalse(any("prop_car" in e for e in errors), errors)
+
+    def test_walking_through_vehicle_side_is_error(self):
+        """绕行穿车：两个端点都在车外，仍判穿模。"""
+        import copy
+        base = copy.deepcopy(BASE)
+        base["props"].append({"id": "prop_car", "name": "越野车", "kind": "vehicle",
+                              "size": [2.1, 0.72, 5.8], "position": [0, 0, 6.0],
+                              "semanticType": "vehicle"})
+        overlay = copy.deepcopy(OVERLAY)
+        overlay["characters"][0]["movementPath"] = [[-2.2, 0, 6.0], [2.2, 0, 6.0]]
+        errors, _ = run_docs({"SCENE_LOC_02.json": base, "ovl.json": overlay})
+        self.assertTrue(any("prop_car" in e for e in errors), errors)
+
     def test_served_seat_exempts_clearance_and_path(self):
         base = json.loads(json.dumps(BASE))
         base["props"][1]["serves"] = ["char_sw"]

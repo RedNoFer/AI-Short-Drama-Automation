@@ -135,6 +135,20 @@ def _merged_props(doc, base):
     return list(merged.values())
 
 
+def _is_overhead(prop) -> bool:
+    """头顶结构（车顶/顶棚/天花板）：y≥1.5m 且厚度≤0.35m。
+
+    人物进出车厢的动线必然从车顶的正投影下方穿过，这不是「穿过实体」；
+    地面行走只需避开有厚度的地面物（车身侧板、座椅、护栏、引擎盖）。
+    """
+    pos = _vec3(prop.get("position")) or [0.0, 0.0, 0.0]
+    size = _vec3(prop.get("size")) or [0.0, 0.0, 0.0]
+    h = abs(size[1])
+    # 高顶棚：y≥1.5 且厚度≤0.35；车内顶棚/行李架：y≥1.25 且厚度≤0.10
+    # （人在舱内是坐/俯身通过，顶棚在头顶之上，不是「穿过实体」）
+    return (pos[1] >= 1.5 and h <= 0.35) or (pos[1] >= 1.25 and h <= 0.10)
+
+
 def _exempt_pair(char, prop):
     """Props a character is allowed to touch: own seat, held item, declared contact."""
     cid = char.get("id")
@@ -238,6 +252,9 @@ def check_geometry(doc, label, base, errors, warnings, min_gap):
                 continue
             if _exempt_pair(char, prop):
                 continue
+            if prop.get("heldBy"):
+                # 手持道具随持有人移动，不是固定障碍；只有持有人本身才是障碍
+                continue
             if pose == "sit" and prop.get("kind") in SEAT_KINDS:
                 continue
             distance = _distance_to_box(position, box)
@@ -272,9 +289,15 @@ def check_geometry(doc, label, base, errors, warnings, min_gap):
                                 or semantic in PATH_BLOCKING_SEMANTICS)
                     if not blocking:
                         continue
+                    if _is_overhead(prop) or prop.get("heldBy"):
+                        continue
                     if _exempt_pair(char, prop):
                         continue
+                    inside_prop = semantic in {"vehicle"} or prop.get("kind") == "vehicle"
                     for start, end in zip(points, points[1:]):
+                        if inside_prop and (_in_footprint(start, box) or _in_footprint(end, box)):
+                            # 车体：上下车是经车门的合法动作，端点落在舱内不算穿越
+                            continue
                         if _segment_hits_box(start, end, box):
                             errors.append(
                                 f"{label}: 角色 {cid} 的 movementPath 穿过道具 {pid}")
@@ -303,6 +326,12 @@ def check_geometry(doc, label, base, errors, warnings, min_gap):
         for prop, box in prop_boxes:
             if _camera_in_prop(cam_pos, prop, box):
                 errors.append(f"{label}: camera 位于道具 {prop.get('id')} 内部")
+
+
+def _in_footprint(point, box) -> bool:
+    """点是否落在道具的水平投影内（含 0.05m 容差）。"""
+    cx, cz, hx, hz, _ = box
+    return abs(point[0] - cx) <= hx + 0.05 and abs(point[2] - cz) <= hz + 0.05
 
 
 def _segment_hits_box(start, end, box, samples=24):
