@@ -318,6 +318,23 @@ class SequelValidatorTests(unittest.TestCase):
         result = validator.validate(make_sequel(ep="E02"), POLICY, baseline=baseline)
         self.assertTrue(any("集号不大于基线包最大集号" in w for w in result.get("warnings", [])))
 
+    def test_second_character_card_with_variant_suffix_rejected(self):
+        """一人一卡：同一角色的 CHAR_0X_PHOTO 变体会被导入端当成新角色。"""
+        clone = ("### 角色 CHAR_01_PHOTO｜阿泽（剧照）\n\n#### 图片提示词\n\n"
+                 "```text\n生成16:9横版单张电影剧照，单人入画。\n```\n\n")
+        pkg = make_package().replace("### 场景 LOC_01", clone + "### 场景 LOC_01", 1)
+        result = validator.validate(pkg, POLICY)
+        self.assertFalse(result["ok"])
+        self.assertTrue(any("同一角色的第二张卡" in e for e in result["errors"]))
+
+    def test_single_still_character_card_passes_layout_check(self):
+        """一人一卡的单张剧照版式必须被认作合法角色版式。"""
+        pkg = make_package().replace(
+            "生成16:9横版白底角色四视图设定图。",
+            "生成16:9横版单张电影剧照，单人入画，3/4 侧身。")
+        result = validator.validate(pkg, POLICY)
+        self.assertTrue(result["ok"], result["errors"])
+
 
 if __name__ == "__main__":
     sys.exit(0 if unittest.main(exit=False).result.wasSuccessful() else 1)

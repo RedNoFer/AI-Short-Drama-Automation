@@ -119,6 +119,7 @@ def parse_shots(text: str) -> tuple[list[dict], list[str]]:
     heading = ""
     i = 0
     table_seen = 0
+    summary_tables = 0
     while i < len(lines):
         line = lines[i]
         if line.lstrip().startswith("#"):
@@ -138,8 +139,13 @@ def parse_shots(text: str) -> tuple[list[dict], list[str]]:
         cols = {key: _find_col(header, names) for key, names in HEADER_KEYS.items()}
         missing = [key for key, idx in cols.items() if idx is None]
         if missing:
-            # 只对「看起来是分镜表」的表报缺列，避免把群像表/资产表误判
-            if any(k in "".join(header) for k in ("景别", "焦段", "机位", "运镜")):
+            head = "".join(header)
+            # 汇总统计表（集|镜数|固定占比…）不是逐镜表：静默跳过，最后统一报缺口，
+            # 否则会把「已有统计表但没逐镜表」误报成「逐镜表缺列」。
+            if any(word in head for word in ("镜数", "占比")):
+                summary_tables += 1
+                continue
+            if any(k in head for k in ("景别", "焦段", "机位", "运镜")):
                 errors.append(f"逐镜表缺列：{'、'.join(missing)}（表头：{block[0].strip()[:60]}）")
             continue
         table_seen += 1
@@ -173,9 +179,11 @@ def parse_shots(text: str) -> tuple[list[dict], list[str]]:
                 "env": size in ENV_SIZES,
             })
     if not table_seen:
+        hint = (f"（已找到 {summary_tables} 张统计汇总表，但汇总表无法反查单镜，"
+                f"不能替代逐镜表）") if summary_tables else ""
         errors.append(
-            "找不到可校验的逐镜表：需含 景别／焦段／机位／运镜 四列，"
-            "格式见 references/storyboard-selfcheck.md")
+            "找不到可校验的逐镜表：需含 景别／焦段／机位／运镜 四列"
+            + hint + "，格式见 references/storyboard-selfcheck.md")
     return shots, errors
 
 

@@ -1147,10 +1147,37 @@ def validate(source: str, policy: dict, model: str = "seedance25",
             if ratio not in asset["prompt"]:
                 errors.append(f"{code}: 图片提示词缺少默认画幅 {ratio}")
             layout = "四视图" if kind == "角色" else "全景"
-            if layout not in asset["prompt"]:
+            if kind == "角色":
+                # 一人一卡：角色资产图也可以是「场景内单张电影剧照」（视频参考形态），
+                # 但必须显式写清，不能只靠「不是四视图」这种否定句蒙过版式检查。
+                still = "单张" in asset["prompt"] and (
+                    "剧照" in asset["prompt"] or "单人" in asset["prompt"])
+                if not still and layout not in asset["prompt"]:
+                    errors.append(
+                        f"{code}: 图片提示词缺少默认{layout}版式，"
+                        "也未声明一人一卡的单张剧照版式")
+            elif layout not in asset["prompt"]:
                 errors.append(f"{code}: 图片提示词缺少默认{layout}版式")
             if kind == "角色":
                 _check_character_prompt_fields(asset, policy, warnings)
+    # 一人一卡：同一角色的第二张卡（CHAR_0X_PHOTO 之类的后缀变体）在导入端会被当成
+    # 新角色，典型后果是 5 人变 10 人、旧的孤儿卡删不掉。这里按「去掉后缀后同名」判重。
+    _variant = re.compile(
+        r"^(CHAR_\d+)_(PHOTO|STILL|VIEW|VIEWS|FRONT|SIDE|BACK|TURNAROUND)$", re.I)
+    for code in list(codes):
+        if codes[code] != "角色":
+            continue
+        m = _variant.match(code)
+        if not m:
+            continue
+        if m.group(1) in codes:
+            errors.append(
+                f"{code}: 与 {m.group(1)} 是同一角色的第二张卡（{m.group(2)} 变体）——"
+                "角色资产须一人一卡，导入端会把它当成新角色导致角色页重复；"
+                "剧照形态请直接写进该角色的图片提示词")
+        else:
+            warnings.append(
+                f"{code}: 角色代码带 {m.group(2)} 后缀，建议合并回 {m.group(1)}（一人一卡）")
     seen_episodes = set()
     stats = []
     for episode in episodes:
