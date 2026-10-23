@@ -29,7 +29,7 @@ HEADER = """# 精简制作包
 #### 图片提示词
 
 ```text
-生成16:9横版角色资产图：单张、单人全身塑像式基准图，中性浅灰无缝背景，深灰工装裤与深色徒步鞋，不作四视图、不作多视图拼版。
+生成16:9横版角色资产图：单张、单人全身塑像式基准图，中性浅灰无缝背景，黑色碎短发、左手腕旧手绳、深灰机能外套，深灰工装裤与深色徒步鞋，不作四视图、不作多视图拼版。
 ```
 
 ### 场景 LOC_01｜起点
@@ -58,7 +58,7 @@ EPISODE_TMPL = """## 剧集 {ep}｜测试集{n}
 
 ```text
 【参考】CHAR_01=阿泽外观锁定；LOC_01=起点路段。
-【公共总规范】统一3D国漫画风。{pad}{lock}
+【公共总规范】统一3D国漫画风。【角色一致性】阿泽：黑色碎短发／左手腕旧手绳／深灰机能外套。{pad}{lock}
 【时间轴】
 {rows}
 【收尾】阿泽走远，下一片段承接。
@@ -330,7 +330,7 @@ class SequelValidatorTests(unittest.TestCase):
     def test_single_still_character_card_passes_layout_check(self):
         """一人一卡的单张剧照版式必须被认作合法角色版式。"""
         pkg = make_package().replace(
-            "生成16:9横版角色资产图：单张、单人全身塑像式基准图，中性浅灰无缝背景，深灰工装裤与深色徒步鞋，不作四视图、不作多视图拼版。",
+            "生成16:9横版角色资产图：单张、单人全身塑像式基准图，中性浅灰无缝背景，黑色碎短发、左手腕旧手绳、深灰机能外套，深灰工装裤与深色徒步鞋，不作四视图、不作多视图拼版。",
             "生成16:9横版单张电影剧照，单人入画，3/4 侧身。")
         result = validator.validate(pkg, POLICY)
         self.assertTrue(result["ok"], result["errors"])
@@ -371,7 +371,7 @@ class SequelValidatorTests(unittest.TestCase):
     def test_wan30_character_asset_must_be_single_statue(self):
         """Wan3.0 角色资产图必须是单人塑像单张，不得四视图拼版。"""
         pkg = make_package(rows=WAN_ROWS, pad=WAN_PAD).replace(
-            "生成16:9横版角色资产图：单张、单人全身塑像式基准图，中性浅灰无缝背景，深灰工装裤与深色徒步鞋，不作四视图、不作多视图拼版。",
+            "生成16:9横版角色资产图：单张、单人全身塑像式基准图，中性浅灰无缝背景，黑色碎短发、左手腕旧手绳、深灰机能外套，深灰工装裤与深色徒步鞋，不作四视图、不作多视图拼版。",
             "生成16:9横版白底角色四视图设定图。")
         result = validator.validate(pkg, POLICY, model="wan30", space_exempt=True)
         self.assertFalse(result["ok"])
@@ -410,6 +410,57 @@ class SequelValidatorTests(unittest.TestCase):
             asset_codes={"CHAR_01"},
             asset_prompts={"CHAR_01": "黑色碎短发，深灰工装裤，深色徒步鞋。"})
         self.assertTrue(any("不同源" in e for e in errors), errors)
+
+    def test_wan30_deny_reference_rejected(self):
+        """WAN30-05：把资产图降级成「只作比对、不作视频参考」等于放弃图锚。"""
+        prompt = (
+            "【参考】CHAR_01 阿泽＝身份与体态基准，资产卡只作身份与服化比对，不作视频参考帧。\n"
+            "【公共总规范】全段1拍0次硬切。阿泽：黑色碎短发／左手腕旧手绳／深灰机能外套。\n"
+            "【时间轴】\n0-30秒，镜头：中景。\n"
+            "【收尾】出口状态：无。\n"
+        )
+        errors, warnings = [], []
+        validator.check_prompt(
+            prompt, "E01", "SH01", 30, {"角色": ["CHAR_01"]},
+            POLICY, errors, char_names={"CHAR_01": "阿泽"},
+            model="wan30", warnings=warnings,
+            asset_codes={"CHAR_01"}, asset_prompts={})
+        self.assertTrue(any("WAN30-05" in e for e in errors), errors)
+
+    def test_wan30_four_view_card_in_reference_rejected(self):
+        """WAN30-05：参考里仍写「资产卡为四视图」与单人塑像图互斥。"""
+        prompt = (
+            "【参考】CHAR_01 阿泽＝身份与服装唯一基准，资产卡为 16:9 白底四视图设定板。\n"
+            "【公共总规范】全段1拍0次硬切。\n"
+            "【时间轴】\n0-30秒，镜头：中景。\n"
+            "【收尾】出口状态：无。\n"
+        )
+        errors, warnings = [], []
+        validator.check_prompt(
+            prompt, "E01", "SH01", 30, {"角色": ["CHAR_01"]},
+            POLICY, errors, char_names={"CHAR_01": "阿泽"},
+            model="wan30", warnings=warnings,
+            asset_codes={"CHAR_01"}, asset_prompts={})
+        self.assertTrue(any("WAN30-05" in e for e in errors), errors)
+
+    def test_duplicate_outfit_variant_rejected(self):
+        """服装变体与默认装同款＝同一套衣服登记两次，模型会当成两套来回切。"""
+        pkg = make_package().replace(
+            "### 场景 LOC_01｜起点",
+            "### 道具 PROP_01｜阿泽·深灰西装\n\n#### 图片提示词\n\n"
+            "```text\n生成16:9横版单张服装变体设定板，本套装供 CHAR_01 穿着，与角色默认装同款。\n```\n\n"
+            "### 场景 LOC_01｜起点")
+        result = validator.validate(pkg, POLICY)
+        self.assertFalse(result["ok"])
+        self.assertTrue(any("同款" in e for e in result["errors"]), result["errors"])
+
+    def test_wan30_missing_three_anchors_rejected(self):
+        """WAN30-06：绑定角色没有三锚条款，远景全身会脱离参考图。"""
+        pkg = make_package(rows=WAN_ROWS, pad=WAN_PAD).replace(
+            "【角色一致性】阿泽：黑色碎短发／左手腕旧手绳／深灰机能外套。", "")
+        result = validator.validate(pkg, POLICY, model="wan30", space_exempt=True)
+        self.assertFalse(result["ok"])
+        self.assertTrue(any("WAN30-06" in e for e in result["errors"]), result["errors"])
 
     def test_reference_ledger_off_by_one_rejected(self):
         """WAN30-03：参考清单按上传顺序编号，正文 @ImageN 必须同序同人。"""

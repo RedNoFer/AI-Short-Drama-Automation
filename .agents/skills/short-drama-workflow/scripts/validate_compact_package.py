@@ -69,6 +69,13 @@ CHANGE_VERB = re.compile(r"换上|脱下|脱掉|换到|套上|换了一身|改�
 # 是角色的固定装，不构成服装变体），故只收「工装服」。
 VARIANT_WORDS = ("西装", "礼服", "婚纱", "连衣裙", "孝服", "军装", "警服", "旗袍",
                  "唐装", "中山装", "校服", "运动服", "工装服")
+# 包内把资产图降级成「只作比对、不作视频参考」的否定句。写了这句，人物就失去图锚，
+# 近景吃文字、全身吃文字，逐镜换脸换装（恋爱仅退款 已实证）。
+DENY_REF = re.compile(r"(?:只|仅)作身份(?:与服化)?比对|不作视频参考帧|不作参考图"
+                      r"|不能作为视频参考|不承载参考")
+# 服装变体与默认装同款 = 同一套衣服登记两次，模型会当成两套来回切。
+DUP_VARIANT = re.compile(r"默认(?:固定)?装[^。；\n]{0,6}(?:同款|相同|一致)"
+                         r"|与(?:角色)?默认(?:固定)?装同款")
 
 
 def _pronoun_words(line: str) -> set:
@@ -157,6 +164,30 @@ def check_prompt(prompt: str, episode: str, shot: str, duration: int, bindings: 
         errors.append(
             f"{label}: Wan3.0 轨包内禁止写 @ImageN/@图片N——编号由应用按实际上传顺序生成，"
             "离线包写死必然与参考清单错位；请改用资产名称点名（WAN30-04）")
+    if model == "wan30":
+        if DENY_REF.search(prompt):
+            errors.append(
+                f"{label}: 包内出现「资产图只作比对、不作视频参考」的否定句——等于主动放弃图锚，"
+                "人物会逐镜飘；删掉否定，改成「以该角色的塑像图为唯一基准」（WAN30-05）")
+        if re.search(r"资产卡[^。；\n]{0,24}四视图", prompt):
+            errors.append(
+                f"{label}: 参考里仍把角色卡写成四视图设定板——Wan3.0 已改为单人全身塑像图，"
+                "四视图不得进视频参考（WAN30-05）")
+        # WAN30-06：每个绑定角色都要有三锚条款。没有锚点时，近景吃图、远景吃文字，
+        # 全身与远景会脱离参考图自由发挥（替身千金 14 段全无锚点已实证）。
+        if char_names and bindings.get("角色"):
+            clause = re.search(r"(?:【角色一致性】|角色一致性[：:])([^【\n]*)", prompt)
+            missing = []
+            for code in bindings["角色"]:
+                name = _base_name(char_names.get(code, ""))
+                if not name:
+                    continue
+                if not clause or not re.search(rf"{re.escape(name)}\s*[：:]", clause.group(1)):
+                    missing.append(name)
+            if missing:
+                errors.append(
+                    f"{label}: 角色 {('、'.join(missing))} 缺少三锚条款（姓名：发型／固定饰件／外套固有色）"
+                    "——没有锚点时远景与全身会脱离参考图；补进【角色一致性】（WAN30-06）")
     # WAN30-03：应用按实际上传顺序生成「@图片N：类型「名称」」清单。
     # 正文 @ImageN 若与该清单错位，每个角色都会拿到别人的参考图。
     # 这段检查必须跑在段落结构校验之前——应用提交文本用的标题是【参考图片】而非【参考】。
@@ -267,7 +298,7 @@ def check_prompt(prompt: str, episode: str, shot: str, duration: int, bindings: 
                 if prompt and "四视图" in prompt and "不是四视图" not in prompt:
                     errors.append(
                         f"{label}: @Image{number} 指向 {code}，但该角色资产是白底四视图设定板——"
-                        "本轨视频参考必须是单张场景内电影剧照（WAN30-01 硬规则 1）")
+                        "本轨视频参考必须是单人全身塑像图（WAN30-01 硬规则 1）")
     rows = []
     thin_shots = []
     for line in sections["【时间轴】"].splitlines():
@@ -1227,6 +1258,10 @@ def validate(source: str, policy: dict, model: str = "seedance25",
         if kind == "角色":
             char_names[code] = asset["name"]
         asset_prompts[code] = asset["prompt"]
+        if kind == "道具" and "·" in asset["name"] and DUP_VARIANT.search(asset["prompt"]):
+            errors.append(
+                f"{code}「{asset['name']}」: 服装变体与角色默认装同款——同一套衣服不能既是默认装"
+                "又是变体，模型会当成两套来回切；删掉该变体或改成真正不同的服装")
         name_key = (kind, " ".join(asset["name"].casefold().split()))
         if name_key in names:
             errors.append(f"同类型资产名称重复：{asset['name']}")
