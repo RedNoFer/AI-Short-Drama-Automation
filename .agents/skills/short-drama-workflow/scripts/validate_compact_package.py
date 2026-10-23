@@ -369,6 +369,40 @@ def check_prompt(prompt: str, episode: str, shot: str, duration: int, bindings: 
         if d_shots != len(rows) or d_cuts != cuts:
             errors.append(f"{label}: 公共总规范声明「全段 {d_shots} 拍 {d_cuts} 次硬切」与正文不符"
                           f"（正文 {len(rows)} 拍 {cuts} 次硬切）")
+    # 识别锚必须与角色资产图同源：图文各说一套就是换装的第二入口（WAN30-04）
+    if model == "wan30" and char_names and asset_prompts:
+        for _code, _name in char_names.items():
+            _base = _base_name(_name)
+            _m = re.search(rf"{re.escape(_base)}(?:（[^）]*）)?[：:]([^；。\n]+)", public_block)
+            if not _m:
+                continue
+            _ap = asset_prompts.get(_code, "")
+            if not _ap:
+                continue
+            _anchors = [a.strip() for a in re.split(r"[／/、]", _m.group(1)) if a.strip()]
+            if not _anchors:
+                continue
+
+            def _cover(a: str, _ap=_ap) -> float:
+                if a in _ap:
+                    return 1.0
+                _sh = {a[i:i + 2] for i in range(len(a) - 1)}
+                if not _sh:
+                    return 0.0
+                return sum(1 for x in _sh if x in _ap) / len(_sh)
+
+            _scores = [_cover(a) for a in _anchors]
+            _good = sum(1 for x in _scores if x >= 0.6)
+            if _good == 0:
+                errors.append(
+                    f"{label}: {_base} 的识别锚与角色资产图提示词不同源（{_m.group(1)}）——"
+                    "正文写的发型/饰件/外套必须在资产图里找得到，否则图和词各说一套（WAN30-04）")
+            elif _good < len(_anchors):
+                _miss = [_anchors[i] for i, x in enumerate(_scores) if x < 0.6]
+                warnings.append(
+                    f"{label}: {_base} 的识别锚「{'、'.join(_miss)}」在资产图提示词里找不到，"
+                    "可能与参考图不一致")
+
     # 4 人以上同框必须有人数锁定句（WAN30-02 第 3 条）
     lock_re = re.compile(r"(画面内|镜内|画面上)[^。；\n]{0,6}恰好[一二三四五]人")
     fuzzy_re = re.compile(r"其余[三四五六七八九]人|另外[三四五六七八九]道身影|其余人")
@@ -1239,9 +1273,13 @@ def validate(source: str, policy: dict, model: str = "seedance25",
                         errors.append(
                             f"{code}: Wan3.0 轨角色资产图必须是单人塑像图（缺少单人声明）")
                     if "全身" not in text:
-                        warnings.append(
-                            f"{code}: 单人塑像图建议全身入画——只拍半身时下装、鞋与随身物无法锁定，"
-                            "成片里的裤子和鞋会由模型自由发挥")
+                        errors.append(
+                            f"{code}: Wan3.0 单人塑像图必须全身入画——半身图锁不住下装、鞋与随身物，"
+                            "成片里的裤子和鞋只能由模型自由发挥")
+                    if not re.search(r"裤|裙", text):
+                        errors.append(f"{code}: 角色资产图没有写下装（裤/裙）——全身塑像必须写下装版型")
+                    if "鞋" not in text and "靴" not in text:
+                        errors.append(f"{code}: 角色资产图没有写鞋——全身塑像必须写鞋型与鞋底")
                     if "塑像" not in text and "单张" not in text:
                         errors.append(
                             f"{code}: Wan3.0 轨角色资产图须写明「单人塑像/单张」，不得用四视图拼版")

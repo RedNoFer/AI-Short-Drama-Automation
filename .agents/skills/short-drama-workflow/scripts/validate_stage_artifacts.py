@@ -272,6 +272,16 @@ def _character_field_warnings(asset_text: str, policy: dict, warnings: list) -> 
             warnings.append(
                 f"阶段2 {code}「{name}」角色图片提示词缺美工字段：{'；'.join(missing)}"
                 "（素颜、无饰品也须写明；字段在场不等于写得好）")
+        if "全身" not in body:
+            warnings.append(
+                f"阶段2 {code}「{name}」没写全身——半身卡锁不住下装与鞋，"
+                "Wan3.0 轨按错误处理")
+        if "裤" not in body and "裙" not in body:
+            warnings.append(
+                f"阶段2 {code}「{name}」没写下装（裤/裙）——成片里的裤裙会逐镜变")
+        if "鞋" not in body and "靴" not in body:
+            warnings.append(
+                f"阶段2 {code}「{name}」没写鞋——成片里的鞋会逐镜变")
 
 
 # 阶段2 必有的落盘物：语义名 → 可接受的命名模式（覆盖 0X- 两套模板命名）

@@ -29,7 +29,7 @@ HEADER = """# 精简制作包
 #### 图片提示词
 
 ```text
-生成16:9横版角色资产图：单张、单人塑像式基准图，中性浅灰无缝背景，不作四视图、不作多视图拼版。
+生成16:9横版角色资产图：单张、单人全身塑像式基准图，中性浅灰无缝背景，深灰工装裤与深色徒步鞋，不作四视图、不作多视图拼版。
 ```
 
 ### 场景 LOC_01｜起点
@@ -330,7 +330,7 @@ class SequelValidatorTests(unittest.TestCase):
     def test_single_still_character_card_passes_layout_check(self):
         """一人一卡的单张剧照版式必须被认作合法角色版式。"""
         pkg = make_package().replace(
-            "生成16:9横版角色资产图：单张、单人塑像式基准图，中性浅灰无缝背景，不作四视图、不作多视图拼版。",
+            "生成16:9横版角色资产图：单张、单人全身塑像式基准图，中性浅灰无缝背景，深灰工装裤与深色徒步鞋，不作四视图、不作多视图拼版。",
             "生成16:9横版单张电影剧照，单人入画，3/4 侧身。")
         result = validator.validate(pkg, POLICY)
         self.assertTrue(result["ok"], result["errors"])
@@ -371,11 +371,45 @@ class SequelValidatorTests(unittest.TestCase):
     def test_wan30_character_asset_must_be_single_statue(self):
         """Wan3.0 角色资产图必须是单人塑像单张，不得四视图拼版。"""
         pkg = make_package(rows=WAN_ROWS, pad=WAN_PAD).replace(
-            "生成16:9横版角色资产图：单张、单人塑像式基准图，中性浅灰无缝背景，不作四视图、不作多视图拼版。",
+            "生成16:9横版角色资产图：单张、单人全身塑像式基准图，中性浅灰无缝背景，深灰工装裤与深色徒步鞋，不作四视图、不作多视图拼版。",
             "生成16:9横版白底角色四视图设定图。")
         result = validator.validate(pkg, POLICY, model="wan30", space_exempt=True)
         self.assertFalse(result["ok"])
         self.assertTrue(any("单人塑像" in e for e in result["errors"]), result["errors"])
+
+    def test_wan30_half_body_asset_rejected(self):
+        """半身资产图锁不住下装与鞋，Wan3.0 判错。"""
+        pkg = make_package(rows=WAN_ROWS, pad=WAN_PAD).replace(
+            "单张、单人全身塑像式基准图", "单张、单人半身塑像式基准图")
+        result = validator.validate(pkg, POLICY, model="wan30", space_exempt=True)
+        self.assertFalse(result["ok"])
+        self.assertTrue(any("全身入画" in e for e in result["errors"]), result["errors"])
+
+    def test_wan30_asset_requires_lower_body_and_shoes(self):
+        """全身塑像必须写下装与鞋，否则成片逐镜换裤换鞋。"""
+        pkg = make_package(rows=WAN_ROWS, pad=WAN_PAD).replace(
+            "深灰工装裤与深色徒步鞋", "")
+        result = validator.validate(pkg, POLICY, model="wan30", space_exempt=True)
+        self.assertFalse(result["ok"])
+        self.assertTrue(any("下装" in e for e in result["errors"]), result["errors"])
+        self.assertTrue(any("鞋" in e for e in result["errors"]), result["errors"])
+
+    def test_wan30_anchor_mismatch_rejected(self):
+        """正文三锚与资产图不同源（词说裙子、图是工装裤）判错。"""
+        prompt = (
+            "【参考】CHAR_01 阿泽＝身份与服装唯一基准（单人塑像图，全片不变）。\n"
+            "【公共总规范】全段1拍0次硬切。阿泽：栗色长卷发／米色半身裙／白色风衣。\n"
+            "【时间轴】\n0-30秒，镜头：中景。\n"
+            "【收尾】出口状态：无。\n"
+        )
+        errors, warnings = [], []
+        validator.check_prompt(
+            prompt, "E01", "SH01", 30, {"角色": ["CHAR_01"]},
+            POLICY, errors, char_names={"CHAR_01": "阿泽"},
+            model="wan30", warnings=warnings,
+            asset_codes={"CHAR_01"},
+            asset_prompts={"CHAR_01": "黑色碎短发，深灰工装裤，深色徒步鞋。"})
+        self.assertTrue(any("不同源" in e for e in errors), errors)
 
     def test_reference_ledger_off_by_one_rejected(self):
         """WAN30-03：参考清单按上传顺序编号，正文 @ImageN 必须同序同人。"""
