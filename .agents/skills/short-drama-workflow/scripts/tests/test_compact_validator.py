@@ -336,5 +336,45 @@ class SequelValidatorTests(unittest.TestCase):
         self.assertTrue(result["ok"], result["errors"])
 
 
+    def test_reference_ledger_off_by_one_rejected(self):
+        """WAN30-03：参考清单按上传顺序编号，正文 @ImageN 必须同序同人。"""
+        prompt = (
+            "【参考图片】：\n"
+            "@图片1：场景「成都 318 零公里路牌」\n"
+            "@图片2：角色「阿泽」\n"
+            "@图片3：角色「苏晚」\n\n"
+            "【参考】@Image1＝CHAR_01；@Image2＝CHAR_02\n"
+            "【公共总规范】全段1拍0次硬切。阿泽（@Image1）：黑色碎短发。\n"
+            "【时间轴】\n0-30秒，镜头：中景。\n"
+            "【收尾】出口状态：无。\n"
+        )
+        errors, warnings = [], []
+        validator.check_prompt(
+            prompt, "E01", "SH01", 30, {"角色": ["CHAR_01", "CHAR_02"]},
+            POLICY, errors, char_names={"CHAR_01": "阿泽", "CHAR_02": "苏晚"},
+            model="wan30", warnings=warnings,
+            asset_codes={"CHAR_01", "CHAR_02"}, asset_prompts={})
+        self.assertTrue(any("WAN30-03" in e for e in errors), errors)
+
+    def test_reference_ledger_aligned_passes(self):
+        """清单与正文同序时不报 WAN30-03。"""
+        prompt = (
+            "【参考图片】：\n"
+            "@图片1：角色「阿泽」\n"
+            "@图片2：角色「苏晚」\n\n"
+            "【参考】@Image1＝CHAR_01；@Image2＝CHAR_02\n"
+            "【公共总规范】全段1拍0次硬切。阿泽（@Image1）：黑色碎短发。\n"
+            "【时间轴】\n0-30秒，镜头：中景。\n"
+            "【收尾】出口状态：无。\n"
+        )
+        errors, warnings = [], []
+        validator.check_prompt(
+            prompt, "E01", "SH01", 30, {"角色": ["CHAR_01", "CHAR_02"]},
+            POLICY, errors, char_names={"CHAR_01": "阿泽", "CHAR_02": "苏晚"},
+            model="wan30", warnings=warnings,
+            asset_codes={"CHAR_01", "CHAR_02"}, asset_prompts={})
+        self.assertFalse(any("WAN30-03" in e for e in errors), errors)
+
+
 if __name__ == "__main__":
     sys.exit(0 if unittest.main(exit=False).result.wasSuccessful() else 1)

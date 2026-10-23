@@ -35,6 +35,12 @@ H3_LABEL = re.compile(r"<(Subject|Picture|Video|Audio)\s+(\d+)>")
 # binding consistency instead.
 IMAGE_NUMBER = re.compile(r"@(?:Image|图片)\s*\d+")
 IMAGE_BINDING = re.compile(r"@(?:Image|图片)\s*(\d+)\s*[＝=]\s*([A-Za-z][A-Za-z0-9_-]*)")
+# 应用生成参考清单的行形态：@图片2：角色「阿泽（全队领队）」
+IMAGE_LEDGER_ITEM = re.compile(
+    r"@(?:图片|Image)\s*(\d+)\s*[：:]\s*(角色|场景|道具|线索)\s*[「\"]([^」\"\n]+)[」\"]")
+KIND_PREFIX = {"CHAR_": "角色", "LOC_": "场景", "PROP_": "道具", "CLUE_": "线索"}
+# 正文内的行内指代形态：阿泽（@Image1）
+INLINE_IMAGE_REF = re.compile(r"([\u4e00-\u9fa5]{1,10})（@(?:Image|图片)\s*(\d+)）")
 H3_VOICE_ANCHOR = re.compile(
     r"\b(voice|tone|low|high|hoarse|husky|soft|calm|firm|steady|breathy|"
     r"whisper|gravelly|childlike|elderly|female|male|deep|thin)\b", re.I)
@@ -133,6 +139,49 @@ def check_prompt(prompt: str, episode: str, shot: str, duration: int, bindings: 
     if model == "h3":
         return check_h3_prompt(prompt, episode, shot, duration, bindings, policy,
                                errors, warnings, extra_fields=extra_fields)
+    # WAN30-03：应用按实际上传顺序生成「@图片N：类型「名称」」清单。
+    # 正文 @ImageN 若与该清单错位，每个角色都会拿到别人的参考图。
+    # 这段检查必须跑在段落结构校验之前——应用提交文本用的标题是【参考图片】而非【参考】。
+    if model == "wan30":
+        ledger = {int(number): (kind, name)
+                  for number, kind, name in IMAGE_LEDGER_ITEM.findall(prompt)}
+        if ledger:
+            for number, code in IMAGE_BINDING.findall(prompt):
+                entry = ledger.get(int(number))
+                kind = next((value for prefix, value in KIND_PREFIX.items()
+                             if code.startswith(prefix)), None)
+                if entry is None or kind is None:
+                    continue
+                ledger_kind, ledger_name = entry
+                if ledger_kind != kind:
+                    errors.append(
+                        f"{label}: 参考清单写 @图片{number}＝{ledger_kind}「{ledger_name}」，"
+                        f"正文却写 @Image{number}＝{code}（{kind}）——编号与实际上传顺序错位，"
+                        "该角色会拿到别人的参考图（WAN30-03）")
+                elif kind == "角色" and char_names:
+                    base = char_names.get(code, "")
+                    if base and _base_name(base) != _base_name(ledger_name):
+                        errors.append(
+                            f"{label}: 参考清单写 @图片{number}＝「{ledger_name}」，"
+                            f"正文写 {code}「{base}」——编号错位，角色会拿到别人的参考图（WAN30-03）")
+        # 正文行内指代「阿泽（@Image1）」也要与清单对得上
+        if ledger:
+            for name, number in INLINE_IMAGE_REF.findall(prompt):
+                entry = ledger.get(int(number))
+                if entry is None:
+                    continue
+                ledger_kind, ledger_name = entry
+                if ledger_kind != "角色" or _base_name(ledger_name) != _base_name(name):
+                    errors.append(
+                        f"{label}: 正文写「{name}（@Image{number}）」，但参考清单里 @图片{number} 是"
+                        f"{ledger_kind}「{ledger_name}」——编号与实际上传顺序错位，"
+                        f"{name} 会拿到别人的参考图（WAN30-03）")
+        # 参考图形态不得同时声明「多角度资产图」与「单张剧照」
+        if (re.search(r"(?:每张)?角色资产图[^。；\n]*不同(?:的)?观察角度", prompt)
+                and "单张电影剧照" in prompt):
+            errors.append(
+                f"{label}: 同时声明角色资产图是「不同观察角度」的多视图、又要求「单张电影剧照」——"
+                "参考图形态自相矛盾（WAN30-03）")
     limit = policy["video"]["prompt_max_chars"]
     band = (policy["video"]["hard_cuts_min"], policy["video"]["hard_cuts_max"])
     if model == "wan30":
@@ -545,6 +594,11 @@ def check_h3_prompt(prompt: str, episode: str, shot: str, duration: int, binding
 def _norm_name(name: str) -> str:
     """Normalize an asset name for comparison (case and spacing insensitive)."""
     return " ".join((name or "").casefold().split())
+
+
+def _base_name(name: str) -> str:
+    """Drop the parenthetical role suffix so 「阿泽（全队领队）」 equals 「阿泽」."""
+    return _norm_name(re.split(r"[（(]", name or "", 1)[0])
 
 
 def _episode_number(code: str) -> int | None:
