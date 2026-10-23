@@ -4,7 +4,7 @@
 注意：LOCK 字典是《三千国道逆己而行》的识别锚样例。迁移其他项目时先改 LOCK，
 或直接删掉 LOCK 项——删掉只会去掉编号，不会改动原有服装词。
 
-- 【参考】块：@ImageN＝CODE 名称（…） → 代码 名称＝职责
+- 【参考】块：@ImageN＝CODE 名称（…） → 代码＝职责（代码后不重复名称）
 - 正文：@ImageN → 代码 名称；角色（@ImageN）： → 角色：
 - 角色资产图：场景内单张剧照 → 单人塑像图
 """
@@ -41,7 +41,7 @@ def ref_line(line, info):
 
     def label(code):
         kind, name = info.get(code, ("角色", code))
-        return f"{code} {name}＝{DUTY[kind]}"
+        return f"{code}＝{DUTY[kind]}"
 
     tail = ""
     idx = line.find("。参考")
@@ -61,7 +61,7 @@ def ref_line(line, info):
         for n, c in pairs:
             if f"@Image{n}" == code:
                 kind, name = info.get(c, ("角色", c))
-                return f"{c} {name}"
+                return name
         return code
 
     tail = re.sub(r"@Image\d+", sub, tail)
@@ -69,12 +69,14 @@ def ref_line(line, info):
 
 
 POSE_OLD = "人物以 3/4 侧身朝向画面外、全身入画、不看镜头，"
-POSE_NEW = ("人物正面 3/4 站立，塑像式中性站姿，双臂自然下垂、不摆剧情动作，重心居中；"
-            "全身入画、头顶到鞋底完整、脚底齐平，不看镜头，")
+POSE_NEW = ("人物身体正对镜头站立、头部正对、最多 5° 微侧，双眼平视镜头；"
+            "塑像式中性站姿，双臂自然下垂、离身约一拳、不摆剧情动作，重心居中；"
+            "全身入画、头顶到鞋底完整、脚底齐平、人物占画面高度 92%–94%，正面轮廓清晰，")
 
 FRAME_OLD = "16:9 横版单张电影剧照：不是设定板、不是四视图、不是多视图拼版，画面里只有"
-FRAME_NEW = ("16:9 横版单张单人塑像图：单张、单人单身体、中性浅灰无缝背景、塑像式中性站姿、"
-             "正面 3/4、全身入画、头顶到鞋底完整、脚底齐平、画面无文字；"
+FRAME_NEW = ("16:9 横版单张单人塑像图：单张、单人单身体、中性浅灰无缝背景、"
+             "正面（身体正对、头正、平视镜头，最多 5° 微侧）、塑像式中性站姿、"
+             "全身入画、头顶到鞋底完整、脚底齐平、人物占画面高度 92%–94%、画面无文字；"
              "不是四视图、不是多视角拼版、不是设定板、不是场景剧照。画面里只有")
 
 BG_OLD = re.compile(r"^场景：LOC_\d+\s+\S.*$", re.M)
@@ -99,7 +101,7 @@ def migrate_chunk(chunk, info):
         if not code:
             return m.group(0)
         kind, name = info.get(code, ("角色", code))
-        return f"{code} {name}"
+        return name
 
     if ref:
         rebuilt = ref_line(ref, info)
@@ -121,7 +123,7 @@ def migrate(text):
         line = line.replace("以各自 @ImageN 为唯一基准", "以各自参考图为唯一基准")
         line = line.replace(
             "（单张电影剧照：单人、3/4 侧身、场景内、同套剧情服化、方向光、可见皮肤纹理、无文字）",
-            "（单人塑像图：单张、单人单身体、中性浅灰无缝背景、全身入画、单色柔光、无文字）")
+            "（单人塑像图：单张、单人单身体、中性浅灰无缝背景、正面、占高 92%–94%、全身入画、无文字）")
         line = line.replace("白底四视图仅作内部存档", "四视图仅作内部存档")
         line = line.replace(FRAME_OLD, FRAME_NEW)
         line = BG_OLD.sub(BG_NEW, line)

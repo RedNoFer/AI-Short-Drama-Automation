@@ -248,7 +248,7 @@ def check_prompt(prompt: str, episode: str, shot: str, duration: int, bindings: 
         errors.append(f"{label}: 视频提示词 {len(prompt)} 字符，超过 {limit}")
     if model != "wan30" and IMAGE_NUMBER.search(prompt):
         errors.append(f"{label}: 导入文件没有图片附件，不得预写 @Image/@图片 编号"
-                      "（本轨用资产代码点名；Wan3.0 轨才允许 @Image 多模态参考）")
+                      "（本轨用资产代码点名；编号由应用按上传槽位生成）")
     if "【参数】" in prompt:
         errors.append(f"{label}: 不再使用【参数】段；剧集/片段/时长/画幅由片段标题与应用设置承载，画风并入【公共总规范】")
     positions = []

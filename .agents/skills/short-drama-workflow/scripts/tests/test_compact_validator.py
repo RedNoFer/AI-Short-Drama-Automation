@@ -495,6 +495,23 @@ class SequelValidatorTests(unittest.TestCase):
             asset_codes={"CHAR_01"}, asset_prompts={})
         self.assertTrue(any("重复写了名称" in e for e in errors), errors)
 
+    def test_normative_docs_have_no_stale_wan30_patterns(self):
+        """规范文档不得再写回旧口径：参考行重复名称、正面 3/4 资产卡。"""
+        repo = ROOT.parents[2]
+        docs = [repo / "AGENTS.md"] + [
+            p for p in ROOT.rglob("*.md")
+            if p.name != "failure-cases.md"]  # 案例表会引用历史错误写法
+        hits = []
+        for doc in docs:
+            for lineno, line in enumerate(doc.read_text(encoding="utf-8").splitlines(), 1):
+                if "渲染成" in line or "旧写法" in line:
+                    continue
+                if re.search(r"(?:CHAR|LOC|PROP)_\d+[ \u3000]+[^＝；，\n]{1,24}＝", line):
+                    hits.append(f"{doc.name}:{lineno} 参考行重复名称")
+                if re.search(r"正面\s*3/4\s*站立|正面或\s*3/4", line):
+                    hits.append(f"{doc.name}:{lineno} 旧 3/4 资产卡口径")
+        self.assertEqual(hits, [], "规范文档残留旧口径：" + "; ".join(hits[:6]))
+
     def test_reference_ledger_off_by_one_rejected(self):
         """WAN30-03：参考清单按上传顺序编号，正文 @ImageN 必须同序同人。"""
         prompt = (
