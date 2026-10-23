@@ -57,7 +57,11 @@ OUTFIT_ASSET = """
 #### 图片提示词
 
 ```text
-真人现实主义电影摄影质感。16:9横版服饰设定板，纯白底平铺整套：深藏青单排扣羊毛西装外套，垫肩略方，哑光牛角扣两粒；白色府绸衬衫；炭灰西裤，裤线笔挺；黑色系带皮鞋。本套装供 CHAR_01 穿着，沿用 CHAR_01 身份母版的脸、发型与身形比例。
+真人现实主义电影摄影质感，真实人物摄影，物理光照，自然人体比例；皮肤哑光真实质感，不做磨皮，无塑料感。
+16:9 单张单人穿着全身图：陈川站在中性浅灰无缝背景前，正面（身体正对、头正、平视镜头，最多 5° 微侧），全身入画、头顶到鞋底完整、脚底齐平、人物占画面高度 92%–94%，单视角、画面无文字。
+套装：深藏青单排扣羊毛西装外套，垫肩略方，哑光牛角扣两粒；白色府绸衬衫；炭灰西裤，裤线笔挺；黑色系带皮鞋。
+本套装供 CHAR_01 穿着，沿用 CHAR_01 身份母版的脸、发型与身形比例；与默认装为同一人物的另一套穿着，不是新人物。
+负向限制：3D 渲染、CG、卡通、平铺陈列、多格拼版、可读文字、水印。
 ```
 """
 
@@ -98,10 +102,10 @@ ROWS_CASUAL = "\n".join([
 
 def build(*, with_outfit_asset: bool = False, rows: str = ROWS_CASUAL,
           chars: str = "CHAR_01", props: str = "", ref: str = "CHAR_01=陈川外观锁定；LOC_01=婚礼院子。",
-          title: str = "婚礼当天") -> str:
+          title: str = "婚礼当天", lock: str = LOCK) -> str:
     head = HEAD + (OUTFIT_ASSET if with_outfit_asset else "")
     return head + EPISODE.format(title=title, chars=chars, props=props, ref=ref,
-                                 lock=LOCK, rows=rows)
+                                 lock=lock, rows=rows)
 
 
 def run(package: str) -> tuple[list, list]:
@@ -118,7 +122,7 @@ class OutfitCheckTest(unittest.TestCase):
     def test_outfit_asset_owner_not_bound_is_error(self):
         package = build(with_outfit_asset=True, chars="CHAR_02",
                         props="道具：PROP_09\n",
-                        ref="PROP_09=陈川婚礼西装，CHAR_01 穿着；LOC_01=婚礼院子。")
+                        ref="PROP_09=本段服装唯一基准，由 CHAR_01 穿着；LOC_01=婚礼院子。")
         errors, _ = run(package)
         self.assertTrue(any("声明供 CHAR_01 穿着" in e for e in errors), errors)
 
@@ -161,7 +165,7 @@ class OutfitCheckTest(unittest.TestCase):
 
     def test_outfit_asset_bound_and_named_passes(self):
         package = build(with_outfit_asset=True, props="道具：PROP_09\n",
-                        ref="PROP_09=陈川婚礼西装，CHAR_01 穿着；LOC_01=婚礼院子。")
+                        ref="PROP_09=本段服装唯一基准，由 CHAR_01 穿着；LOC_01=婚礼院子。")
         errors, _ = run(package)
         self.assertEqual([e for e in errors if "服装" in e], [])
 
@@ -169,6 +173,46 @@ class OutfitCheckTest(unittest.TestCase):
         rows = ROWS_CASUAL.replace("他站在院子里", "陈川穿着西装站在院子里")
         errors, _ = run(build(rows=rows))
         self.assertTrue(any("锁定" in e for e in errors), errors)
+
+    # ---- 2026-10-23 实证：服装变体生成成 3D 卡通 + 与默认装两套真值 ----
+    def test_outfit_board_layout_is_error(self):
+        package = build(with_outfit_asset=True, props="道具：PROP_09\n",
+                        ref="PROP_09=本段服装唯一基准，由 CHAR_01 穿着；LOC_01=婚礼院子。")
+        package = package.replace("16:9 单张单人穿着全身图",
+                                  "16:9 服饰设定板，平铺与穿着态并列")
+        errors, _ = run(package)
+        self.assertTrue(any("单张单人穿着全身图" in e for e in errors), errors)
+
+    def test_outfit_missing_style_anchor_is_error(self):
+        package = build(with_outfit_asset=True, props="道具：PROP_09\n",
+                        ref="PROP_09=本段服装唯一基准，由 CHAR_01 穿着；LOC_01=婚礼院子。")
+        package = package.replace(
+            "真人现实主义电影摄影质感，真实人物摄影，物理光照，自然人体比例；"
+            "皮肤哑光真实质感，不做磨皮，无塑料感。", "")
+        errors, _ = run(package)
+        self.assertTrue(any("缺风格锚" in e for e in errors), errors)
+
+    def test_outfit_reference_without_unique_is_error(self):
+        package = build(with_outfit_asset=True, props="道具：PROP_09\n",
+                        ref="PROP_09=陈川婚礼西装，CHAR_01 穿着；LOC_01=婚礼院子。")
+        errors, _ = run(package)
+        self.assertTrue(any("唯一基准" in e for e in errors), errors)
+
+    def test_variant_bound_but_anchor_keeps_default_is_error(self):
+        package = build(
+            with_outfit_asset=True, props="道具：PROP_09\n",
+            ref="PROP_09=本段服装唯一基准，由 CHAR_01 穿着；LOC_01=婚礼院子。",
+            lock="【角色一致性】陈川：黑色短发／细金属框眼镜／墨绿飞行员夹克。")
+        errors, _ = run(package)
+        self.assertTrue(any("仍写默认装" in e for e in errors), errors)
+
+    def test_variant_bound_and_anchor_switched_passes(self):
+        package = build(
+            with_outfit_asset=True, props="道具：PROP_09\n",
+            ref="PROP_09=本段服装唯一基准，由 CHAR_01 穿着；LOC_01=婚礼院子。",
+            lock="【角色一致性】陈川：黑色短发／细金属框眼镜／深藏青羊毛西装外套。")
+        errors, _ = run(package)
+        self.assertEqual([e for e in errors if "服装" in e or "默认装" in e], [])
 
 
 if __name__ == "__main__":

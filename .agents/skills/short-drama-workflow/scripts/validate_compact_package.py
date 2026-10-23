@@ -57,13 +57,14 @@ SPACE_DEFAULT_DIR = ("内部", "04b-站位图")
 # prop-type asset whose prompt declares its owner, so the app can bind it.
 OUTFIT_TOP = ("西装", "礼服", "婚纱", "连衣裙", "制服", "孝服", "工装", "军装",
               "警服", "校服", "旗袍", "唐装", "中山装", "运动服", "风衣", "大衣",
-              "夹克", "针织衫", "毛衣", "背心", "衬衫", "polo衫")
+              "夹克", "针织衫", "毛衣", "背心", "衬衫", "polo衫", "白大褂", "病号服",
+              "护士服")
 OUTFIT_OWNER = re.compile(r"供\s*(CHAR_[A-Za-z0-9_-]+)\s*穿着")
 OUTFIT_MARK = re.compile(r"可穿戴服装|服装变体|可穿戴道具")
 FIXED_OUTFIT = re.compile(r"固定服装[：:]\s*([^\n。]{0,80})")
 GARMENT_VERB = (r"(?:穿|换上|换了|套上|套着|身穿|穿着|穿了一身|穿着一身|脱下|脱掉|换到"
                 r"|这身|那身)")
-CHANGE_VERB = re.compile(r"换上|脱下|脱掉|换到|套上|换了一身|改穿")
+CHANGE_VERB = re.compile(r"换上|脱下|脱掉|换到|套上|换了一身|改穿|褪下|褪去")
 # Words that imply a different garment from the character's default look.
 # 场合级（身份/职务/仪式）服装词。「工装」是款式类别而非场合级制服（工装夹克/工装裤
 # 是角色的固定装，不构成服装变体），故只收「工装服」。
@@ -415,9 +416,15 @@ def check_prompt(prompt: str, episode: str, shot: str, duration: int, bindings: 
             if not _m:
                 continue
             _ap = asset_prompts.get(_code, "")
+            # 服装变体片段：第三锚来自所绑服装资产，不是角色卡
+            for _pcode in bindings.get("道具", []):
+                _pp = asset_prompts.get(_pcode, "")
+                if _pp and re.search(rf"供\s*{re.escape(_code)}\s*穿着", _pp):
+                    _ap = _ap + "\n" + _pp
             if not _ap:
                 continue
-            _anchors = [a.strip() for a in re.split(r"[／/、]", _m.group(1)) if a.strip()]
+            _raw = re.sub(r"（[^）]*）", "", _m.group(1))
+            _anchors = [a.strip() for a in re.split(r"[／/、→]", _raw) if a.strip()]
             if not _anchors:
                 continue
 
@@ -1097,6 +1104,13 @@ def check_space_sync(parsed: dict, char_names: dict, space_dir: Path,
     return errors, warnings, stats
 
 
+def _anchor_segment(prompt: str, name: str) -> str:
+    """取【角色一致性】里某个角色的识别锚（第三项通常就是外套）。"""
+    body = prompt.split("【公共总规范】")[-1].split("【时间轴】")[0]
+    match = re.search(re.escape(name) + r"[：:]([^；。\n]{1,120})", body)
+    return match.group(1) if match else ""
+
+
 def check_outfit_consistency(parsed: dict, char_names: dict,
                              errors: list[str], warnings: list[str]) -> dict:
     """Check that costume changes are carried as wearable assets, not lost.
@@ -1118,6 +1132,23 @@ def check_outfit_consistency(parsed: dict, char_names: dict,
         owner = OUTFIT_OWNER.search(prompt)
         if owner or OUTFIT_MARK.search(prompt):
             outfits[code] = owner.group(1) if owner else ""
+            # 负向限制里常写「不要平铺」，只看正向段
+            positive = re.split(r"负向限制[：:]|不要[：:]", prompt)[0]
+            # 正向句里也常有「不是设定板／不是平铺陈列」，先剥掉否定短语
+            layout = re.sub(r"(?:不是|不出现|禁止|不要|不采用)[^、。；\n]{0,16}", "", positive)
+            if re.search(r"平铺|并列|设定板|拼版|多格", layout):
+                errors.append(
+                    f"{code}: 服装变体的视频参考图必须是单张单人穿着全身图——"
+                    "平铺/并列/设定板会把排版与概念图风格带进视频；"
+                    "平铺板请另出内部存档，不上传")
+            if "全身入画" not in positive:
+                errors.append(f"{code}: 服装变体图必须全身入画（半身锁不住下装与鞋）")
+            if "占画面高度" not in positive:
+                warnings.append(f"{code}: 服装变体图未写占画面高度——建议 92%–94%")
+            if not re.search(r"真人|写实|摄影|实拍|CG|动画|国漫|漫剧", positive):
+                errors.append(
+                    f"{code}: 服装变体图缺风格锚——必须复写角色资产的画风句"
+                    "（真人写实／CG），否则会按默认概念设定图风格生成")
     stats = {"outfit_assets": len(outfits), "fragments": 0, "outfit_bound": 0}
     for episode in parsed["episodes"]:
         for shot in episode["shots"]:
@@ -1143,13 +1174,21 @@ def check_outfit_consistency(parsed: dict, char_names: dict,
                 owner_name = char_names.get(owner, "")
                 entry = ""
                 for line in reference.splitlines():
-                    if code in line:
+                    if re.match(rf"\s*{re.escape(code)}\s*[＝=]", line):
                         entry = line
                         break
+                if not entry:
+                    # 单行参考块：截取该资产的子句
+                    _m = re.search(rf"{re.escape(code)}[^；。]*", reference)
+                    entry = _m.group(0) if _m else ""
                 if owner and owner_name and owner_name not in entry and owner not in entry:
                     errors.append(
                         f"{label}: 服装资产 {code} 在【参考】里没有写明由谁穿着"
                         f"（应写 {owner} 或 {owner_name}）")
+                if "唯一" not in entry:
+                    errors.append(
+                        f"{label}: 服装资产 {code} 的参考行没写「唯一基准」——"
+                        "角色塑像图仍穿着默认装，不点明唯一基准，模型会两套衣服混用")
 
             variant_words = [word for word in VARIANT_WORDS if word in timeline]
             per_char: dict = {}
@@ -1192,7 +1231,25 @@ def check_outfit_consistency(parsed: dict, char_names: dict,
                 if not name or not asset:
                     continue
                 if char_code in owners:
-                    # A bound outfit supersedes the character's default look.
+                    # A bound outfit supersedes the default look — but only if the
+                    # text anchors actually switched; otherwise the statue's coat wins.
+                    owner_outfit = next(
+                        (c for c, o in outfits.items() if o == char_code
+                         and c in bound_outfits), "")
+                    if name and owner_outfit:
+                        anchor = _anchor_segment(prompt, name)
+                        outfit_prompt = assets[owner_outfit].get("prompt", "")
+                        garment = re.search(r"套装清单[：:]([^\n]{0,400})", outfit_prompt)
+                        garment_span = garment.group(1) if garment else outfit_prompt
+                        default_words = {w for w in OUTFIT_TOP
+                                         if w in asset.get("prompt", "") and w in anchor}
+                        variant_words = {w for w in OUTFIT_TOP if w in garment_span}
+                        stale = default_words - variant_words
+                        if stale and not re.search(r"→|换装|褪|改穿|只穿|前半|后半", anchor):
+                            errors.append(
+                                f"{label}: 服装变体 {owner_outfit} 已绑定，但 {name} 的识别锚"
+                                f"仍写默认装「{'、'.join(sorted(stale))}」——"
+                                "变体片段的第三锚必须换成变体上装，或写成「前半A→后半B」")
                     continue
                 worn = per_char.get(name, set())
                 if not worn:
