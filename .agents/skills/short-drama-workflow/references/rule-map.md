@@ -39,12 +39,13 @@
 | R28 | **阶段 3.5 打斗路由有门**：逐片段 A/B/C 必须落盘；A 级须带拍点表、一镜到底标记与原文证据；全剧无打斗写「均为 C」声明；A 级豁免镜数带与硬切的出口必须有人守 | fight-router.md ★；policy.gates.stage35_artifact | SKILL（阶段3/3.5）、execution-checklist（阶段3.5）、multi-agent-execution（派单表） | validate_stage_artifacts --stage 3.5（缺表/等级不可识别/A 级缺件均判错） | PROC-05（同类：可豁免硬规却无门） |
 | R29 | **门查结构不查关键字**：必登标题下必须有正文、表格必须有数据行、每角色在美工账各一行、持物链须有箭头链或表格行；空壳文档骗门与跳步同级 | execution-checklist.md（执行方式 3）★ | SKILL（阶段门）、multi-agent-execution（纪律 8） | validate_stage_artifacts（_require_section／_table_rows／角色行比对） | PROC-05、审计 2026-10-23 |
 | R30 | **一条主线＋三种模型 profile**：阶段 0 登记 `seedance25`/`wan30`/`h3` 单轨；阶段 0–3.5 剧情/资产/合同/空间/分镜共用，只拆阶段 3 片段形态、3.5 A 级、4 编译器/评审附录、5 校验器；不得混写三轨模板；Seedance 2.0（S02/S07/S13）是独立路由族，不是 30 秒多镜主线的 seedance25 profile | workflow-spec.md ★；model-branch-matrix.md ★；policy.workflow | SKILL（输入/阶段3/4/5）、execution-checklist（分支与固定落盘名）、prompt-review（分支附录）、compact-import、fight-router、project-brief、handoff-template、runtime-planning | `validate_workflow_manifest.py --strict`（生成轨/01c/05/06/执行账/唯一包；回归 scripts/tests/test_workflow_manifest.py） | 2026-10-23 分支审计 |
+| R31 | **提示词分层与去重**：一个事实只写一处；资产图写全外观/空间/形制，不写镜头/台词/表演/剧情动作/第二套服装；视频只写机位/走位/动作/状态变化，不重写资产图已锁的脸、服装剪裁材质、建筑结构材质、道具尺寸纹样；三锚只写发型／固定饰件／外套品类＋固有色 | prompt-layering.md ★ | SKILL 阶段2/4、execution-checklist、asset-image-production、asset-reference-binding、prompt-review、wan30-prompt-spec、wan30-adapter、compact-import、outfit-variants | `validate_compact_package.py`（资产镜头/台词词、三锚面料剪裁词、视频硬亮线；场景/道具细节簇提醒）；`validate_stage_artifacts.py --stage 2`（03b 分层段提醒） | LAYER-01、WAN30-04、SCENE-01 |
 
 ## 文件职责速查（改文件时先判断它是不是定义文件）
 
 - `SKILL.md`：流程总纲，只写阶段顺序与原则，规则细节链接到定义文件；避免在此复制规则全文（复制=未来漂移点）。
 - `policy.json`：全部机器可读默认值；改默认值升版本号。
-- `references/*`：R1–R30 的定义与执行细则。
+- `references/*`：R1–R31 的定义与执行细则。
 - `scripts/`：确定性检查；新硬规则先问能否机检，能就进脚本并补 `scripts/tests/` 正反用例。
 - `assets/drama-compact-package-template.md`：导入端结构模板，注释只写格式不写项目值。
 - `agents/openai.yaml`：入口默认提示词，只做引导，不承载规则。
@@ -55,6 +56,7 @@
 
 | 日期 | 规则 | 变更 | 同步的文件 |
 |---|---|---|---|
+| 2026-10-23 | R31 | 新增提示词分层与去重：资产图只写外观/空间/形制，视频只写机位/动作/状态变化；三锚收窄为发型／固定饰件／外套品类＋固有色；机检新增资产镜头/台词词、三锚面料剪裁词、视频硬亮线，场景/道具细节簇提醒；四个交付包同步收窄三锚（policy v24） | prompt-layering.md（新）、SKILL、execution-checklist、asset-image-production、asset-reference-binding、prompt-review、wan30-prompt-spec、wan30-adapter、compact-import、outfit-variants、failure-cases、policy.json、validate_compact_package.py、validate_stage_artifacts.py |
 | 2026-10-23 | R30、R6/R8/R10/R25 | 新增「一条主线＋三种模型 profile」；统一 H3 app 30 秒默认、official 4–15；修正评审六视角、参考语法与字符/时长口径 | workflow-spec.md、model-branch-matrix.md、SKILL、execution-checklist、prompt-review、compact-import、fight-router、project-brief、handoff-template、policy、workflows.md、router |
 | 2026-10-18 | R1–R4、R6–R8 | 四段结构、自然语言、声线体系、覆盖率、评审回滚建立 | 见 SKILL 与 PROC-02..04 |
 | 2026-10-19 | R6 | 两轮评审 → 一次对抗性独立评审 + 修复复验（policy v7） | SKILL、prompt-review、checklist、compact-import、PROC-02 |

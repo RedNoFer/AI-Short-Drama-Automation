@@ -62,6 +62,10 @@ REVIEW_OK = """# 阶段 2 资产独立评审（评稿人：子任务 R-03）
 - 角色美工账：两行齐全，妆造版本与饰件清单无「留空」。
 - 声线母版：锚点 3–5 个，阿泽与苏晚盲听可辨人，旁白与混叠人声已单独定义。
 - 持物链：古图获取点晚于首次出场镜头，无「道具早于获取点出现」。
+
+## 分层与去重
+
+- 资产图写全外观、空间与形制；视频正文只写机位、动作与状态变化；同一事实没有在两个资产或正文里重复。
 - 结论：通过，无阻断项。
 """
 
@@ -230,6 +234,24 @@ class StageGateTests(unittest.TestCase):
         build(self.workdir, review=False, bases={"SCENE_LOC_01": BASE_DOC})
         errors, _ = gates.stage2(self.workdir, NAMES)
         self.assertTrue(any("03b-资产评审" in e for e in errors), errors)
+
+    def test_stage2_review_with_layering_section_passes(self):
+        """评审含「分层与去重」段 → 不再提醒（R31 的正常路径）。"""
+        build(self.workdir, bases={"SCENE_LOC_01": BASE_DOC})
+        errors, warnings = gates.stage2(self.workdir, NAMES)
+        self.assertEqual(errors, [])
+        self.assertFalse(any("分层与去重" in w for w in warnings), warnings)
+
+    def test_stage2_review_missing_layering_section_warns(self):
+        """评审没有「分层与去重」段 → 提醒，不阻断（历史项目兼容）。"""
+        build(self.workdir, bases={"SCENE_LOC_01": BASE_DOC})
+        review = self.workdir / "内部" / "03b-资产评审.md"
+        text = review.read_text(encoding="utf-8")
+        text = text.split("## 分层与去重")[0]
+        review.write_text(text, encoding="utf-8")
+        errors, warnings = gates.stage2(self.workdir, NAMES)
+        self.assertEqual(errors, [])
+        self.assertTrue(any("分层与去重" in w for w in warnings), warnings)
 
     def test_empty_context_check_table_is_error(self):
         """上下文衔接自查只留表头、无数据行 → 判错。"""

@@ -369,6 +369,17 @@ def stage2(workdir: Path, names: list) -> tuple[list, list]:
                           "须由与起草方隔离的评审子任务复核，不能只靠生产方自检")
         elif len(review.read_text(encoding="utf-8").strip()) < 60:
             errors.append(f"阶段2 独立评审记录「{review.name}」内容过短（<60 字符），视为未评审")
+        else:
+            review_text = review.read_text(encoding="utf-8")
+            layering = _find_section(review_text, ("分层与去重", "提示词分层"))
+            if layering is None:
+                warnings.append(
+                    "阶段2 独立评审缺「分层与去重」段：资产图写全外观/空间/形制，"
+                    "视频只写机位/动作/状态变化；同一事实不在两个资产或正文里重复（R31）")
+            elif len(layering[1].strip()) < 20:
+                warnings.append(
+                    f"阶段2 独立评审「{layering[0]}」是空标题：须写资产图不写什么、"
+                    "视频不重复什么，并给出证据（R31）")
 
     _character_field_warnings(asset_text, _policy(), warnings)
     _scene_plate_table_warnings(asset_text, warnings)

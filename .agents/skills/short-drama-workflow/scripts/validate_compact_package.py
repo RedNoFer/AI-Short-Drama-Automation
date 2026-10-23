@@ -187,7 +187,7 @@ def check_prompt(prompt: str, episode: str, shot: str, duration: int, bindings: 
                     missing.append(name)
             if missing:
                 errors.append(
-                    f"{label}: 角色 {('、'.join(missing))} 缺少三锚条款（姓名：发型／固定饰件／外套固有色）"
+                    f"{label}: 角色 {('、'.join(missing))} 缺少三锚条款（姓名：发型／固定饰件／外套品类＋固有色）"
                     "——没有锚点时远景与全身会脱离参考图；补进【角色一致性】（WAN30-06）")
     # WAN30-03：应用按实际上传顺序生成「@图片N：类型「名称」」清单。
     # 正文 @ImageN 若与该清单错位，每个角色都会拿到别人的参考图。
@@ -429,12 +429,17 @@ def check_prompt(prompt: str, episode: str, shot: str, duration: int, bindings: 
                 continue
 
             def _cover(a: str, _ap=_ap) -> float:
-                if a in _ap:
+                # 资产图里「T 恤」常带空格；锚句「T恤」不该因此判成不同源
+                a_norm = re.sub(r"\s+", "", a)
+                # 「前半A→后半B」是状态变化前缀，不参与资产图同源比对
+                a_norm = re.sub(r"^(?:前半|后半|前段|后段)", "", a_norm)
+                ap_norm = re.sub(r"\s+", "", _ap)
+                if a_norm and a_norm in ap_norm:
                     return 1.0
-                _sh = {a[i:i + 2] for i in range(len(a) - 1)}
+                _sh = {a_norm[i:i + 2] for i in range(len(a_norm) - 1)}
                 if not _sh:
                     return 0.0
-                return sum(1 for x in _sh if x in _ap) / len(_sh)
+                return sum(1 for x in _sh if x in ap_norm) / len(_sh)
 
             _scores = [_cover(a) for a in _anchors]
             _good = sum(1 for x in _scores if x >= 0.6)
@@ -1350,6 +1355,102 @@ def check_scene_plate(assets: list[dict], errors: list[str], warnings: list[str]
                 break
 
 
+
+def check_prompt_layers(parsed: dict, char_names: dict[str, str], policy: dict,
+                        model: str, errors: list[str], warnings: list[str]) -> None:
+    """资产图写全外观，视频提示词只写镜头、动作与状态变化；同一事实不写两遍。
+
+    硬拦三类可枚举的越界：资产图写镜头/台词/表演词；Wan3.0 三锚写面料/剪裁/内搭/裤鞋；
+    视频正文写硬亮线/湿反光等油腻词。场景/道具材质词成簇只提醒，语义重复交给评审。
+    """
+    cfg = policy.get("prompt_layers", {}) or {}
+    asset_re = re.compile(cfg.get("asset_forbidden", r"推近|拉远|横移|跟拍|摇镜|变焦|硬切|转场|台词|旁白|独白|喊道|哭着|笑着|表演"))
+    anchor_re = re.compile(cfg.get("anchor_forbidden", r"领口|袖口|翻领|圆领|立领|长袖|短袖|面料|棉布|棉麻|丝绸|泰丝|拉链|纽扣|垫肩|褶皱|剪裁|版型|收腰|宽松|修身|短款|长款|内搭|裤|鞋"))
+    oily_re = re.compile(cfg.get("video_oily", r"硬亮线|硬边高光|湿反光|镜面反光|油润|打蜡"))
+    scene_re = re.compile(cfg.get("scene_detail", r"木纹|砖缝|墙皮|漆面|大理石|柚木|水泥|藤蔓|青苔|裂纹|斑驳|剥落|纹理|瓦片|窗棂"))
+    prop_re = re.compile(cfg.get("prop_detail", r"尺寸|厘米|毫米|雕花|纹样|印花|刻字|材质|漆面|金属|塑料|皮革"))
+    skip_re = re.compile(r"画风|质感|物理光照|不HDR|低饱和|实物材质|使用痕迹|唯一基准|参考图|本文只写|识别锚|角色一致性|＝")
+    base_names = set()
+    for name in (char_names or {}).values():
+        if not name:
+            continue
+        base = _base_name(name)
+        base_names.add(base)
+        base_names.add(base.split()[0] if base.split() else base)
+
+    # 1) 资产图：只写外观/空间/形制，不写镜头、台词、表演、剧情动作
+    for asset in parsed.get("assets", []):
+        prompt = asset.get("prompt", "")
+        if not prompt.strip():
+            continue
+        positive = re.split(r"负向限制[：:]|不要[：:]", prompt)[0]
+        for match in asset_re.finditer(positive):
+            before = positive[max(0, match.start() - 3):match.start()]
+            if re.search(r"[不无禁避免防]", before):
+                continue
+            errors.append(
+                f"{asset['code']}: 资产图只写外观/空间/形制，出现「{match.group(0)}」——"
+                "镜头、台词、表演和剧情动作属于视频提示词；删掉，资产图只锁静态外观")
+
+    # 2) 视频：Wan3.0 三锚只写发型/固定饰件/外套品类+固有色；油腻词判错；场景/道具细节成簇提醒
+    for episode in parsed.get("episodes", []):
+        for shot in episode.get("shots", []):
+            prompt = (shot.get("prompts", {}) or {}).get("视频提示词", "")
+            if not prompt.strip():
+                continue
+            label = f"{episode.get('code', '')}/{shot.get('code', '')}"
+            public = prompt.split("【时间轴】", 1)[0]
+            if "【公共总规范】" in public:
+                public = public.split("【公共总规范】", 1)[1]
+            if model == "wan30":
+                for clause in re.split(r"[；;。\n]", public):
+                    if "：" not in clause:
+                        continue
+                    if clause.count("／") + clause.count("/") < 2:
+                        continue
+                    left = re.split(r"[】\]]", clause.split("：", 1)[0])[-1].strip()
+                    left = re.sub(r"[（(][^）)]*[）)]", "", left).strip()
+                    if left not in base_names:
+                        continue
+                    right = clause.split("：", 1)[1]
+                    for part in re.split(r"[／/、→]", right):
+                        for match in anchor_re.finditer(part):
+                            errors.append(
+                                f"{label}: {left} 的三锚写了「{match.group(0)}」——"
+                                "三锚只写发型／固定饰件／外套品类＋固有色；面料、剪裁、版型、"
+                                "内搭、裤鞋由资产图锁，正文重复会造出第二套服装真值")
+            for line in prompt.splitlines():
+                for match in oily_re.finditer(line):
+                    before = line[max(0, match.start() - 4):match.start()]
+                    if re.search(r"[不无禁避免防]", before):
+                        continue
+                    errors.append(
+                        f"{label}: 视频正文出现「{match.group(0)}」——真人项目材质哑光、"
+                        "高光柔和；硬亮线/湿反光/镜面反光会把画面推向 HDR 与塑料感")
+                    break
+            scene_hits, prop_hits = set(), set()
+            for line in prompt.splitlines():
+                if skip_re.search(line):
+                    continue
+                for match in scene_re.finditer(line):
+                    before = line[max(0, match.start() - 4):match.start()]
+                    if not re.search(r"[不无禁避免防]", before):
+                        scene_hits.add(match.group(0))
+                for match in prop_re.finditer(line):
+                    before = line[max(0, match.start() - 4):match.start()]
+                    if not re.search(r"[不无禁避免防]", before):
+                        prop_hits.add(match.group(0))
+            if len(scene_hits) >= 3:
+                warnings.append(
+                    f"{label}: 视频正文重写了场景材质/纹理（{'、'.join(sorted(scene_hits))}）——"
+                    "场景图已经锁死结构、材质与纹理；正文只写机位/朝向/光位/可走位置/出入口，"
+                    "保留一个短方位锚即可（LAYER-01）")
+            if len(prop_hits) >= 3:
+                warnings.append(
+                    f"{label}: 视频正文重写了道具材质/形制（{'、'.join(sorted(prop_hits))}）——"
+                    "道具图已经锁死尺寸、材质、纹样；正文只写开合/新旧/有字/在谁手里（LAYER-01）")
+
+
 def validate(source: str, policy: dict, model: str = "seedance25",
              tier: str | None = None, h3_segments: str = "app",
              baseline: str | None = None,
@@ -1508,6 +1609,7 @@ def validate(source: str, policy: dict, model: str = "seedance25",
         else:
             warnings.append(
                 f"{code}: 角色代码带 {m.group(2)} 后缀，建议合并回 {m.group(1)}（一人一卡）")
+    check_prompt_layers(parsed, char_names, policy, model, errors, warnings)
     seen_episodes = set()
     stats = []
     for episode in episodes:
