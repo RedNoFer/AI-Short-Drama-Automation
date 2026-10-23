@@ -266,6 +266,13 @@ def check_prompt(prompt: str, episode: str, shot: str, duration: int, bindings: 
         sections[heading] = prompt[positions[index] + len(heading):end].strip()
         if not sections[heading]:
             errors.append(f"{label}: {heading} 内容为空")
+    if model == "wan30":
+        dup = re.search(r"(?:CHAR|LOC|PROP)_\d+[ \u3000]+[^＝；，\n]{1,24}＝",
+                        sections["【参考】"])
+        if dup:
+            errors.append(
+                f"{label}: 【参考】在代码后重复写了名称（{dup.group(0)}）——"
+                "应用会把代码解析成资产名，渲染成「娜琳 娜琳＝…」；改成「代码＝职责」")
     for codes in bindings.values():
         for code in codes:
             if code not in sections["【参考】"]:

@@ -74,7 +74,7 @@ GOOD_ROWS = "\n".join([
     '25-30秒，硬切，他呼出白气，画面定住。',
 ])
 
-LOCK = "声线锁定：CHAR_01 阿泽＝26岁男声，中低音清冷略沙。"
+LOCK = "声线锁定：CHAR_01＝26岁男声，中低音清冷略沙。"
 
 
 def make_package(*, lock: str = LOCK, rows: str | None = None,
@@ -136,7 +136,7 @@ class CompactValidatorTests(unittest.TestCase):
         self.assertTrue(any("声线锁定" in e for e in result["errors"]))
 
     def test_voice_lock_drift_across_episodes_rejected(self):
-        drifted = "声线锁定：CHAR_01 阿泽＝高亢尖细的少年音。"
+        drifted = "声线锁定：CHAR_01＝高亢尖细的少年音。"
         result = validator.validate(make_package(second_episode=True, second_lock=drifted), POLICY)
         self.assertFalse(result["ok"])
         self.assertTrue(any("声线锁定跨片段不一致" in e for e in result["errors"]))
@@ -355,7 +355,7 @@ class SequelValidatorTests(unittest.TestCase):
     def test_wan30_name_only_reference_passes(self):
         """改用资产名称点名后不再报 WAN30-04。"""
         prompt = (
-            "【参考】CHAR_01 阿泽＝身份与服装唯一基准；CHAR_02 苏晚＝身份与服装唯一基准。\n"
+            "【参考】CHAR_01＝身份与服装唯一基准；CHAR_02＝身份与服装唯一基准。\n"
             "【公共总规范】全段1拍0次硬切。阿泽：黑色碎短发／左手腕旧手绳／深灰机能外套。\n"
             "【时间轴】\n0-30秒，镜头：中景。\n"
             "【收尾】出口状态：无。\n"
@@ -397,7 +397,7 @@ class SequelValidatorTests(unittest.TestCase):
     def test_wan30_anchor_mismatch_rejected(self):
         """正文三锚与资产图不同源（词说裙子、图是工装裤）判错。"""
         prompt = (
-            "【参考】CHAR_01 阿泽＝身份与服装唯一基准（单人塑像图，全片不变）。\n"
+            "【参考】CHAR_01＝身份与服装唯一基准（单人塑像图，全片不变）。\n"
             "【公共总规范】全段1拍0次硬切。阿泽：栗色长卷发／米色半身裙／白色风衣。\n"
             "【时间轴】\n0-30秒，镜头：中景。\n"
             "【收尾】出口状态：无。\n"
@@ -414,7 +414,7 @@ class SequelValidatorTests(unittest.TestCase):
     def test_wan30_deny_reference_rejected(self):
         """WAN30-05：把资产图降级成「只作比对、不作视频参考」等于放弃图锚。"""
         prompt = (
-            "【参考】CHAR_01 阿泽＝身份与体态基准，资产卡只作身份与服化比对，不作视频参考帧。\n"
+            "【参考】CHAR_01＝身份与体态基准，资产卡只作身份与服化比对，不作视频参考帧。\n"
             "【公共总规范】全段1拍0次硬切。阿泽：黑色碎短发／左手腕旧手绳／深灰机能外套。\n"
             "【时间轴】\n0-30秒，镜头：中景。\n"
             "【收尾】出口状态：无。\n"
@@ -430,7 +430,7 @@ class SequelValidatorTests(unittest.TestCase):
     def test_wan30_four_view_card_in_reference_rejected(self):
         """WAN30-05：参考里仍写「资产卡为四视图」与单人塑像图互斥。"""
         prompt = (
-            "【参考】CHAR_01 阿泽＝身份与服装唯一基准，资产卡为 16:9 白底四视图设定板。\n"
+            "【参考】CHAR_01＝身份与服装唯一基准，资产卡为 16:9 白底四视图设定板。\n"
             "【公共总规范】全段1拍0次硬切。\n"
             "【时间轴】\n0-30秒，镜头：中景。\n"
             "【收尾】出口状态：无。\n"
@@ -478,6 +478,22 @@ class SequelValidatorTests(unittest.TestCase):
         result = validator.validate(pkg, POLICY, model="wan30", space_exempt=True)
         self.assertFalse(result["ok"])
         self.assertTrue(any("负向清单" in e for e in result["errors"]), result["errors"])
+
+    def test_wan30_reference_must_not_repeat_asset_name(self):
+        """代码后重复名称会被应用渲染成「娜琳 娜琳＝…」，可能被读成两个人。"""
+        prompt = (
+            "【参考】CHAR_01 阿泽＝身份与服装唯一基准（单人塑像图，全片不变）。\n"
+            "【公共总规范】全段1拍0次硬切。阿泽：黑色碎短发／左手腕旧手绳／深灰机能外套。\n"
+            "【时间轴】\n0-30秒，镜头：中景。\n"
+            "【收尾】出口状态：无。\n"
+        )
+        errors, warnings = [], []
+        validator.check_prompt(
+            prompt, "E01", "SH01", 30, {"角色": ["CHAR_01"]},
+            POLICY, errors, char_names={"CHAR_01": "阿泽"},
+            model="wan30", warnings=warnings,
+            asset_codes={"CHAR_01"}, asset_prompts={})
+        self.assertTrue(any("重复写了名称" in e for e in errors), errors)
 
     def test_reference_ledger_off_by_one_rejected(self):
         """WAN30-03：参考清单按上传顺序编号，正文 @ImageN 必须同序同人。"""
