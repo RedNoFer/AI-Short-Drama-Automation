@@ -43,6 +43,18 @@ class ScenePlateTest(unittest.TestCase):
         errors, _ = self.run_plate("16:9 单张全景。画面中无人物。门前空地停一辆黑色新轿车。")
         self.assertTrue(any("可移动道具" in e for e in errors), errors)
 
+    def test_bare_car_in_scene_is_error(self):
+        errors, _ = self.run_plate("16:9 单张全景。画面中无人物。中景路牌与车，远景公路。")
+        self.assertTrue(any("可移动道具" in e for e in errors), errors)
+
+    def test_road_lane_is_not_a_car(self):
+        errors, _ = self.run_plate(PLATE + "人行道外是车行道，路面湿润。")
+        self.assertFalse(any("可移动道具" in e for e in errors), errors)
+
+    def test_negative_car_light_is_not_error(self):
+        errors, _ = self.run_plate(PLATE + "本卡画无车灯的自然状态。")
+        self.assertFalse(any("可移动道具" in e for e in errors), errors)
+
     def test_fixed_set_piece_allowed(self):
         errors, _ = self.run_plate(
             "16:9 单张全景。画面中无人物。门前停一辆黑色轿车"

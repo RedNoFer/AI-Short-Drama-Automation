@@ -195,6 +195,7 @@
 | 检查 | 位置 | 级别 |
 |---|---|---|
 | 资产图出现镜头／台词／表演词 | `validate_compact_package.py` | 错误 |
+| 场景图正向句出现裸「车」等可移动道具（车道／车站／车位／车库／车辙／车流／车行及否定句除外） | `validate_compact_package.py` | 错误 |
 | Wan3.0 三锚出现面料、剪裁、版型、内搭、裤鞋 | `validate_compact_package.py` | 错误 |
 | 视频正文出现 `硬亮线／硬边高光／湿反光／镜面反光／油润／打蜡` | `validate_compact_package.py` | 错误 |
 | 视频正文场景／道具材质词成簇（≥3 个不同词） | `validate_compact_package.py` | 提醒 |

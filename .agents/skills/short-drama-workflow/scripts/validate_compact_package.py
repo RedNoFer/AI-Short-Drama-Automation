@@ -700,7 +700,7 @@ def _norm_name(name: str) -> str:
 
 def _base_name(name: str) -> str:
     """Drop the parenthetical role suffix so 「阿泽（全队领队）」 equals 「阿泽」."""
-    return _norm_name(re.split(r"[（(]", name or "", 1)[0])
+    return _norm_name(re.split(r"[（(]", name or "", maxsplit=1)[0])
 
 
 def _episode_number(code: str) -> int | None:
@@ -1287,7 +1287,7 @@ SCENE_DEFAULTS = {
     "person_pattern": (r"男子|女子|男人|女人|身影|行人|人群|角色|人物|人脸|的人|一位|一名|"
                        r"有个|盐工|工人|游客|路人|商贩|司机|警察|护士(?!站)|"
                        r"医生(?!办公室|诊室)|保安|服务员|顾客|小孩|孩子|老人"),
-    "movable_pattern": r"轿车|汽车|车辆|卡车|摩托|自行车|三轮车|船|动物|狗|猫",
+    "movable_pattern": r"轿车|汽车|车辆|卡车|摩托|自行车|三轮车|船|动物|狗|猫|车(?!道|站|位|库|辙|流|行)",
     "oily_pattern": r"油润|湿反光|镜面反光|硬边高光|金边|光晕|丁达尔|镜头光斑|打蜡",
     "realism_pattern": r"真实现场照片|胶片|手机随手拍|纪实摄影|现场记录",
     "plate_marker": "场景底板",
@@ -1348,6 +1348,8 @@ def check_scene_plate(assets: list[dict], errors: list[str], warnings: list[str]
                 break
             for match in movable_re.finditer(sentence):
                 if fixed_marker in sentence:
+                    continue
+                if re.search(r"[不无禁避免防]", sentence[max(0, match.start() - 3):match.start()]):
                     continue
                 errors.append(
                     f"{code}: 场景图出现可移动道具「{match.group(0)}」——"
