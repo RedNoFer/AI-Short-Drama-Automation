@@ -1276,6 +1276,62 @@ def check_outfit_consistency(parsed: dict, char_names: dict,
     return stats
 
 
+SCENE_PERSON = re.compile(r"男子|女子|男人|女人|身影|行人|人群|角色|人物|人脸|的人|一位|一名|有个|盐工|工人|游客|路人|商贩|司机|警察|护士(?!站)|医生(?!办公室|诊室)|保安|服务员|顾客|小孩|孩子|老人")
+SCENE_MOVABLE = re.compile(r"轿车|汽车|车辆|卡车|摩托|自行车|三轮车|船|动物|狗|猫")
+SCENE_SKIP = re.compile(r"无人物|不出现|不含|没有|禁止|0\s*人|空镜|场景底板|站位|overlay|片段绑定")
+SCENE_OILY = re.compile(r"油润|湿反光|镜面反光|硬边高光|金边|光晕|丁达尔|镜头光斑|打蜡")
+SCENE_REALISM = re.compile(r"真实现场照片|胶片|手机随手拍|纪实摄影|现场记录")
+
+
+def check_scene_plate(assets: list[dict], errors: list[str], warnings: list[str]) -> None:
+    """场景建立图必须是空镜底板：无人物、无车辆、无手持道具。
+
+    人物由角色塑像图提供，车辆等可移动道具由 PROP 绑定；场景图只锁空间、
+    光位与材质。把人和车画进场景图，会在视频里多出第二个人/第二辆车，
+    并让车与墙、门等固定结构穿模。
+    """
+    for asset in assets:
+        if asset["kind"] != "场景":
+            continue
+        code = asset["code"]
+        prompt = asset.get("prompt", "")
+        positive = re.split(r"负向限制[：:]|不要[：:]", prompt)[0]
+        if not re.search(r"无人物|无人|0\s*人|空镜", positive):
+            errors.append(
+                f"{code}: 场景建立图必须是空镜底板——写「画面中无人物／0 人」，"
+                "人物由角色塑像图锁，不要画进场景图")
+        if "场景底板" not in prompt:
+            warnings.append(
+                f"{code}: 场景图未写「本卡是场景底板：只锁空间、光位与材质；"
+                "车辆、人物与道具的在场和位置由片段绑定与站位承载」")
+        if not SCENE_REALISM.search(positive):
+            warnings.append(
+                f"{code}: 场景图缺真实感锚——真人项目建议写「真实现场照片／35mm 胶片／"
+                "手机随手拍」，并低饱和、低对比、不锐化")
+        for sentence in re.split(r"[。；\n]", positive):
+            if not sentence.strip() or SCENE_SKIP.search(sentence):
+                continue
+            if SCENE_PERSON.search(sentence):
+                errors.append(
+                    f"{code}: 场景图正向句出现人物（{sentence.strip()[:36]}）——"
+                    "人物由角色塑像图锁，场景图只留空镜")
+            for oily in SCENE_OILY.finditer(sentence):
+                if re.search(r"[不无禁避免防]", sentence[max(0, oily.start() - 3):oily.start()]):
+                    continue
+                errors.append(
+                    f"{code}: 场景图正向句出现「{oily.group(0)}」——"
+                    "「油润/湿反光/镜面/硬边高光/金边/光晕」会把图推向 HDR 与塑料感；"
+                    "改成哑光材质、局部柔和高光")
+                break
+            for match in SCENE_MOVABLE.finditer(sentence):
+                if "固定陈设" in sentence:
+                    continue
+                errors.append(
+                    f"{code}: 场景图出现可移动道具「{match.group(0)}」——"
+                    "车辆/动物应登记为 PROP，由片段绑定；确需固定陈设须标「固定陈设」并写净距")
+                break
+
+
 def validate(source: str, policy: dict, model: str = "seedance25",
              tier: str | None = None, h3_segments: str = "app",
              baseline: str | None = None,
@@ -1312,6 +1368,7 @@ def validate(source: str, policy: dict, model: str = "seedance25",
                 if name in voice_map and voice_map[name] != desc:
                     errors.append(f"声线锁定跨片段不一致：{name} 的锚点出现两种写法（母版只能维护一处，全量派生）")
                 voice_map[name] = desc
+    check_scene_plate(assets, errors, warnings)
     if not episodes:
         errors.append("至少需要一个剧集")
     codes: dict[str, str] = {}
