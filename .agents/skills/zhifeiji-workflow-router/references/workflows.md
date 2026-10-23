@@ -91,7 +91,7 @@
 4. **篇幅口径**：官方没有字符上限，官方生产 prompt 实测 2500–4540 字符／378–723 词（上游 README 的 case-T2VA/I2VA/Ref2VA）；本项目硬顶 6000 字符、低于 1200 提醒过简；Ref2VA 的 `detailed_description` 按官方 350–500 词。
 5. **资产与参考标签映射**：`@CH/@SC/@PROP`（`CHAR_/LOC_`）→ `<Subject N>`；实际上传图/首帧/尾帧 → `<Picture N>`；参考视频 → `<Video N>`；参考音频 → `<Audio N>`（区分 `fully_copy` 与 `reference`）。标签一经定义全文一致。未上传的真实图片不得预写 `<Picture N>` 编号，只写资产代码与可见不变量并标注「参考图未上传」。
 6. **编译正文**：base 模式＝对齐指令行（仅 I2VA/FL2VA/L2VA）＋空行＋`integrated_multimodal_description` → `overall_soundscape` → `non_diegetic_music`；Ref2VA 模式＝`subject_definitions` → `summary` → `retention_analysis` → `detailed_description` → `overall_soundscape` → `non_diegetic_music`。台词/歌词/画面可见文字保留原语言并逐字照抄，其余正文英文。
-7. **机检＋人工评审**：H3 提示词正文体检跑 `python3 .agents/skills/minimax-h3-adapter/scripts/audit_h3_prompt.py <文件> --mode <模式> --duration <秒>`；交付到精简制作包时，正文原样写入 `#### 视频提示词` 块（片段时长 4–15 秒），再跑 `python3 .agents/skills/short-drama-workflow/scripts/validate_compact_package.py <精简制作包.md> --model h3`。两机检只证明格式；剧情因果、表演可拍性、空间衔接、声音来源与口型仍按 agent 独立评审，不因机检通过而放行。
+7. **机检＋人工评审**：H3 提示词正文体检跑 `python3 .agents/skills/minimax-h3-adapter/scripts/audit_h3_prompt.py <文件> --mode <模式> --duration <秒>`（只按 official 4–15 秒单条；app 30 秒片段不要用它做时长门）；交付到精简制作包时，正文原样写入 `#### 视频提示词` 块（app 模式默认 30 秒，official 模式 4–15 秒），再跑 `python3 .agents/skills/short-drama-workflow/scripts/validate_compact_package.py <精简制作包.md> --model h3`。两机检只证明格式；剧情因果、表演可拍性、空间衔接、声音来源与口型仍按 agent 独立评审，不因机检通过而放行。
 
 **交接**：模式、成片时长与片段边界、资产 ID → `<Subject N>` 映射、实际上传素材 → `<Picture/Video/Audio N>` 映射、说话人 ID 表、每镜切点与台词归属、与既有 Seedance/Wan 轨的差异说明。
 

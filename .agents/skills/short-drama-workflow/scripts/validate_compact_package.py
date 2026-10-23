@@ -1269,7 +1269,7 @@ def main() -> int:
                         default="seedance25",
                         help="生成模型轨：seedance25（默认，整数秒/分档字数）、"
                              "wan30（0.5秒粒度/20000字符/2-30秒）、"
-                             "h3（MiniMax H3 官方字段结构/4-15秒/毫秒切点）")
+                             "h3（MiniMax H3 官方字段结构/app 默认30秒、official 4-15秒/毫秒切点）")
     parser.add_argument("--tier", choices=["tier1_standard", "tier2_xiaomo63",
                                            "tier3_full_xiaomo63"],
                         default=None,

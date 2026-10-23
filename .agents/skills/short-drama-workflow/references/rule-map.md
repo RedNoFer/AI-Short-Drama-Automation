@@ -13,11 +13,11 @@
 | R3 | 七类声音来源标签 + 「口型」+ 直引号 + 字秒比与跨切申报 | compact-import.md | SKILL 阶段4、prompt-review、validation-contract、policy.voice | validate_compact_package（标签/口型/速率） | PROC-03 |
 | R4 | 声线母版（3–5 锚点、反差、旁白/混叠/低语）+ 公共层「声线锁定：」机械派生、跨片段逐字一致 | voice-and-dubbing.md ★；母版实例存内部/03 | SKILL（输入/阶段2/4/5/边界）、execution-checklist（2/4/5/触发点）、compact-import、prompt-review、asset-image-production、delivery-contract、project-brief、quality-inputs、validation-contract、模板注释、openai.yaml、multi-agent-execution | validate_compact_package（锁定存在/说话覆盖/跨片一致），policy.voice | PROC-04 |
 | R5 | 上下文衔接：镜/片段/集的站位、视线、道具状态链、场景光向、情绪话头；收尾写下一片段入口 | compact-import.md（第5条） | SKILL（阶段3/4/5、阶段门）、prompt-review（衔接维度+空间专项）、story-evaluation、runtime-planning、multi-agent-execution | 无（语义评审） | SPACE-01、SYNC-01 |
-| R6 | 评审机制：一次对抗性独立评审（五视角、带证据），回滚后全量复验；独立子任务、记录模板、4 次预算、升级用户 | prompt-review.md | SKILL（阶段门/1/5/速度）、execution-checklist（6）、compact-import、delivery-contract、multi-agent-execution、policy.review、story-evaluation | 无（流程闸） | PROC-02 |
+| R6 | 评审机制：一次对抗性独立评审（六视角＋登记轨分支硬规附录、带证据），回滚后全量复验；独立子任务、记录模板、修复复验预算、升级用户 | prompt-review.md | SKILL（阶段门/1/5/速度）、execution-checklist（6）、compact-import、delivery-contract、multi-agent-execution、policy.review、story-evaluation | 无（流程闸） | PROC-02 |
 | R7 | 小说原文块逐字来自用户源文件（支持 docx）；差异须授权登记；部分章节须声明范围 | compact-import.md | SKILL 阶段5、execution-checklist（阶段5）、prompt-review（上游交接）、project-brief（源文件登记）、multi-agent-execution | validate_novel_coverage.py（命中≥0.99/覆盖≥0.95） | — |
-| R8 | 30 秒片段、6–11 镜、5–10 硬切、整数秒连续时间轴、正文≤3000 字符（按档 2000/3000/4500） | runtime-planning.md；数值在 policy.video | SKILL（输入/阶段3/边界）、compact-import、prompt-review、validation-contract、delivery-contract | validate_compact_package（时间轴/硬切/字符） | PROC-02 |
+| R8 | Seedance/Wan 默认 30 秒片段、6–11 镜、5–10 硬切；Seedance 整数秒/分档 2000·3000·4500，Wan 0.5 秒/20000；H3 见 R25/R30 | runtime-planning.md；数值在 policy.video | SKILL（输入/阶段3/边界）、compact-import、prompt-review、validation-contract、delivery-contract | validate_compact_package（时间轴/硬切/字符） | PROC-02 |
 | R9 | 资产版式：角色 16:9 白底四视图、场景 16:9 单张全景；图片提示词不带声音 | asset-image-production.md；policy.assets | SKILL 阶段2、compact-import、character-asset-prompts 技能 | validate_compact_package（16:9/四视图/全景字样） | — |
-| R10 | 不预写 @Image/@图片 编号；绑定代码=【参考】代码；每片段至多一场景 | compact-import.md | SKILL 阶段4、prompt-review、validation-contract | validate_compact_package（@Image 拦截、绑定/参考/场景数校验） | SYNC-01 |
+| R10 | Seedance/H3 单 MD 不预写 @Image/@图片 编号；Wan 可写 `@ImageN` 但须指向真实资产；H3 用 `<Picture N>` 且未上传不得预写；绑定代码=【参考】代码；每片段至多一场景 | compact-import.md | SKILL 阶段4、prompt-review、validation-contract、model-branch-matrix | validate_compact_package（@Image 拦截、绑定/参考/场景数校验） | SYNC-01 |
 | R11 | 阶段门：必读白名单、内部档案落盘、执行账一行结论，禁跳读/合并阶段/记忆引用 | execution-checklist.md | SKILL（阶段门）、multi-agent-execution（派单与放行）、project-brief | 无（流程闸） | PROC-01 |
 | R12 | 多智能体隔离执行：总控/执行员/评审员分离子任务，交接包给路径不给全文，母版冻结后才能并行 | multi-agent-execution.md | execution-checklist（执行方式）、SKILL（阶段门）、policy.execution | 无（流程闸） | PROC-01 |
 | R13 | 反例回收：偏差/原因/验证分栏，结论必须接入实际检查点，不固化个案参数 | failure-cases.md | SKILL（反例回收）、各阶段引用 SPACE/SYNC/PROC | 案例触发的规则进 R1–R12 机检或评审视角 | SPACE-01/SYNC-01/PROC-01..04 |
@@ -37,12 +37,13 @@
 | R27 | **视感自查可机检**：每片段一段「视感统计：」六键行＋含景别/焦段/机位/运镜四列的逐镜表；声明值与实算值逐项比对，固定占比/连续固定/连三近景/焦段与机位种数按实算判定 | storyboard-selfcheck.md ★；数值 policy.storyboard_selfcheck | SKILL（阶段3）、execution-checklist（阶段3/执行方式3）、prompt-review（评审不重复手算）、policy.gates | crosscheck_storyboard.py（阶段3 门强制调用；--emit 反算）＋ scripts/tests/test_crosscheck_storyboard.py | PROC-02、DIALOGUE-01（同类：口径不可验证） |
 | R28 | **阶段 3.5 打斗路由有门**：逐片段 A/B/C 必须落盘；A 级须带拍点表、一镜到底标记与原文证据；全剧无打斗写「均为 C」声明；A 级豁免镜数带与硬切的出口必须有人守 | fight-router.md ★；policy.gates.stage35_artifact | SKILL（阶段3/3.5）、execution-checklist（阶段3.5）、multi-agent-execution（派单表） | validate_stage_artifacts --stage 3.5（缺表/等级不可识别/A 级缺件均判错） | PROC-05（同类：可豁免硬规却无门） |
 | R29 | **门查结构不查关键字**：必登标题下必须有正文、表格必须有数据行、每角色在美工账各一行、持物链须有箭头链或表格行；空壳文档骗门与跳步同级 | execution-checklist.md（执行方式 3）★ | SKILL（阶段门）、multi-agent-execution（纪律 8） | validate_stage_artifacts（_require_section／_table_rows／角色行比对） | PROC-05、审计 2026-10-23 |
+| R30 | **一条主线＋三种模型 profile**：阶段 0 登记 `seedance25`/`wan30`/`h3` 单轨；阶段 0–3.5 剧情/资产/合同/空间/分镜共用，只拆阶段 3 片段形态、3.5 A 级、4 编译器/评审附录、5 校验器；不得混写三轨模板；Seedance 2.0（S02/S07/S13）是独立路由族，不是 30 秒多镜主线的 seedance25 profile | workflow-spec.md ★；model-branch-matrix.md ★；policy.workflow | SKILL（输入/阶段3/4/5）、execution-checklist（分支与固定落盘名）、prompt-review（分支附录）、compact-import、fight-router、project-brief、handoff-template、runtime-planning | `validate_workflow_manifest.py --strict`（生成轨/01c/05/06/执行账/唯一包；回归 scripts/tests/test_workflow_manifest.py） | 2026-10-23 分支审计 |
 
 ## 文件职责速查（改文件时先判断它是不是定义文件）
 
 - `SKILL.md`：流程总纲，只写阶段顺序与原则，规则细节链接到定义文件；避免在此复制规则全文（复制=未来漂移点）。
 - `policy.json`：全部机器可读默认值；改默认值升版本号。
-- `references/*`：R1–R25 的定义与执行细则。
+- `references/*`：R1–R30 的定义与执行细则。
 - `scripts/`：确定性检查；新硬规则先问能否机检，能就进脚本并补 `scripts/tests/` 正反用例。
 - `assets/drama-compact-package-template.md`：导入端结构模板，注释只写格式不写项目值。
 - `agents/openai.yaml`：入口默认提示词，只做引导，不承载规则。
@@ -53,6 +54,7 @@
 
 | 日期 | 规则 | 变更 | 同步的文件 |
 |---|---|---|---|
+| 2026-10-23 | R30、R6/R8/R10/R25 | 新增「一条主线＋三种模型 profile」；统一 H3 app 30 秒默认、official 4–15；修正评审六视角、参考语法与字符/时长口径 | workflow-spec.md、model-branch-matrix.md、SKILL、execution-checklist、prompt-review、compact-import、fight-router、project-brief、handoff-template、policy、workflows.md、router |
 | 2026-10-18 | R1–R4、R6–R8 | 四段结构、自然语言、声线体系、覆盖率、评审回滚建立 | 见 SKILL 与 PROC-02..04 |
 | 2026-10-19 | R6 | 两轮评审 → 一次对抗性独立评审 + 修复复验（policy v7） | SKILL、prompt-review、checklist、compact-import、PROC-02 |
 | 2026-10-19 | R12 | 新增多智能体隔离执行；本表建立（policy v8） | SKILL、checklist、multi-agent-execution、rule-map、openai.yaml |

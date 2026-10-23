@@ -21,6 +21,8 @@ ZHIFEIJI AI 影视创作资源库：21 组影视创作 Skill 源文件 + 四个�
 
 需要 MiniMax H3 结构的视频提示词时，走 `.agents/skills/minimax-h3-adapter/SKILL.md`（组合流程 W17）。
 
+短剧工作流默认 Seedance 2.5，另有 Wan3.0 与 MiniMax H3 两个 profile；总流程见 `.agents/skills/short-drama-workflow/references/workflow-spec.md`，三轨差异与“只拆分支层”的边界见 `model-branch-matrix.md`。Seedance 2.0 的 S02/S07/S13 是独立路由族，不并入 30 秒多镜主线。
+
 ## 下载与克隆
 
 仓库本体：git pack 约 53MB，解压后约 82MB（不含演示视频），可直接克隆：

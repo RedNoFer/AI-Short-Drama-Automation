@@ -107,7 +107,7 @@ non_diegetic_music: ...
 机检（只证明格式，剧情与表演仍由 agent 判断）：
 
 ```bash
-# 单条 H3 提示词体检
+# 单条 H3 提示词体检（official 4–15 秒口径；app 30 秒片段不要用它做时长门）
 python3 "/Users/a1/work/3000课程21个skill/.agents/skills/minimax-h3-adapter/scripts/audit_h3_prompt.py" 提示词文件.md --duration 15 --mode fl2va
 
 # 交付到精简制作包后整体验收（骨架不变，正文原样写入 #### 视频提示词 块，片段时长沿用应用单位）

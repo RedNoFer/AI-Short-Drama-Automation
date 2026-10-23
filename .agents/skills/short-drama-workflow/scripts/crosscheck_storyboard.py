@@ -103,6 +103,10 @@ def _is_fixed(move: str, flag: str) -> bool:
     motion = _norm(move)
     if not motion:
         return False
+    # 「静止一秒后每秒约 2 度漂移」「固定起幅后横移」不是固定镜：
+    # 运镜里出现任何位移动词时，不能仅凭「静止/固定」二字判为固定。
+    if any(word in motion for word in ("推", "拉", "摇", "移", "跟", "漂", "升降", "环绕", "变焦")):
+        return False
     return any(word in motion for word in FIXED_WORDS) and "微" not in motion
 
 
@@ -197,7 +201,8 @@ def stats(shots: list[dict]) -> dict:
     fixed_quota = [s for s in fixed_all if not s["escape"]]
     focals = {s["focal"] for s in shots if s["focal"] is not None}
     angles = {s["angle"] for s in shots if s["angle"]}
-    side45 = [s for s in shots if "45" in s["angle"] or "四十五" in s["angle"]]
+    # 只统计「侧45°」机位；俯拍45°/仰拍45°不属于侧45，不能混入口径。
+    side45 = [s for s in shots if "侧45" in s["angle"] or "侧四十五" in s["angle"]]
     normal = [s for s in shots if not s["fixed"] and not s["env"]]
     return {
         "镜数": total,

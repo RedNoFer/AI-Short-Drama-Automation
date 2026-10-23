@@ -55,7 +55,42 @@
       }
     },
     "validator_note": "validate_compact_package.py 读 video.prompt_max_chars（第二档3000）与 hard_cuts_min/max（5-10，即镜头6-11）；片段标题含「一镜到底」走 fight 分支（拍点行、行内禁硬切、豁免硬切计数、字符上限取 tier3 4500）；--tier 已实现（tier1_standard/tier2_xiaomo63/tier3_full_xiaomo63）；--model 已实现 seedance25/wan30/h3",
-    "hard_cuts_note": "全项目统一 5-10 次硬切（2026-10-22 用户口径）：Seedance 2.5 轨与 Wan3.0 轨同用此带；H3 轨因单条 ≤15 秒另设 0-6 带，见 model_profiles.h3"
+    "hard_cuts_note": "Seedance 2.5 轨与 Wan3.0 轨同用 5-10 次硬切（2026-10-22 用户口径）；H3 轨固定 0-6 带（app 30 秒应用片段或 official 4–15 秒单条均按此带），见 model_profiles.h3"
+  },
+  "workflow": {
+    "version": "v2-2026-10-23",
+    "default_branch": "seedance25",
+    "model_branches": [
+      "seedance25",
+      "wan30",
+      "h3"
+    ],
+    "branch_matrix": "references/model-branch-matrix.md",
+    "workflow_spec": "references/workflow-spec.md",
+    "branch_manifest": "内部/00-项目输入单.md",
+    "stage1_review_artifact": "内部/01c-剧情评审.md",
+    "stage4_review_artifact": "内部/05-提示词评审与整改.md",
+    "stage4_review_index": "内部/05-评审索引.md",
+    "stage5_gate_artifact": "内部/06-机检结果.txt",
+    "execution_ledger": "内部/执行账.md",
+    "manifest_validator": "scripts/validate_workflow_manifest.py --strict",
+    "seedance20": "独立路由族（S02 完整剧本精细逐镜／S07 15 秒短片段／S13 角度运镜）；不是 30 秒多镜主流程的 seedance25 profile；若要做完整分支须另建适配器与校验器",
+    "common_stages": [
+      "0",
+      "1",
+      "2",
+      "3",
+      "3.5",
+      "4",
+      "5"
+    ],
+    "branch_overrides": [
+      "3.segment_shape",
+      "3.5.a_level",
+      "4.compiler",
+      "4.review_addendum",
+      "5.validator"
+    ]
   },
   "model_profiles": {
     "seedance25": {
@@ -122,7 +157,7 @@
       ],
       "hard_cuts_min": 0,
       "hard_cuts_max": 6,
-      "hard_cuts_note": "单条 ≤15 秒，切点密度按可执行密度给；FL2VA 官方默认单镜（0 切）",
+      "hard_cuts_note": "app 模式 30 秒应用片段按 0–6 切；official 模式单条 4–15 秒；切点密度按可执行密度给，FL2VA 官方默认单镜（0 切）",
       "field_structure": "base：integrated_multimodal_description → overall_soundscape → non_diegetic_music；ref2va：subject_definitions → summary → retention_analysis → detailed_description → overall_soundscape → non_diegetic_music",
       "package_carrier": "精简制作包中 H3 轨正文原样写入 #### 视频提示词 块，不写四段结构（【参考】/【公共总规范】/【时间轴】/【收尾】）与「硬切，」时间行",
       "asset_mapping": "@CH/@SC/@PROP（CHAR_/LOC_）→ <Subject N>；实际上传图 → <Picture N>；视频 → <Video N>；音频 → <Audio N>；映射表存内部档案，未上传图片不得预写编号",
