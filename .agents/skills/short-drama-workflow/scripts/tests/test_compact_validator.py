@@ -471,6 +471,14 @@ class SequelValidatorTests(unittest.TestCase):
             self.assertFalse(result["ok"], bad)
             self.assertTrue(any("资产卡" in e for e in result["errors"]), (bad, result["errors"]))
 
+    def test_wan30_asset_negative_list_must_not_ban_camera_gaze(self):
+        """负向写「看镜头」会抵消正面要求，把人推回侧脸。"""
+        pkg = make_package(rows=WAN_ROWS, pad=WAN_PAD).replace(
+            "深灰工装裤与深色徒步鞋，", "深灰工装裤与深色徒步鞋，负向限制：侧身、看镜头、磨皮，")
+        result = validator.validate(pkg, POLICY, model="wan30", space_exempt=True)
+        self.assertFalse(result["ok"])
+        self.assertTrue(any("负向清单" in e for e in result["errors"]), result["errors"])
+
     def test_reference_ledger_off_by_one_rejected(self):
         """WAN30-03：参考清单按上传顺序编号，正文 @ImageN 必须同序同人。"""
         prompt = (

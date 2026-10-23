@@ -1325,6 +1325,10 @@ def validate(source: str, policy: dict, model: str = "seedance25",
                         errors.append(
                             f"{code}: Wan3.0 轨角色资产图不得是四视图/多视图拼版——"
                             "并排全身挂进视频参考会把排版、棚光、正装一起带进成片（WAN30-01）")
+                    if re.search(r"(?:负向限制|不要|禁止|不得|避免)[：:][^。\n]*看镜头", text):
+                        errors.append(
+                            f"{code}: 资产卡的负向清单写了「看镜头」——正面卡要求双眼平视镜头，"
+                            "这条会把人推回侧脸；删掉，负向改写「侧身、低头、视线离开镜头」")
                     if re.search(r"不看镜头|视线不看|视线落(?:在)?画外", text):
                         errors.append(
                             f"{code}: 资产卡写了「不看镜头／视线落在画外」——那是视频镜头纪律；"
@@ -1334,6 +1338,10 @@ def validate(source: str, policy: dict, model: str = "seedance25",
                             f"{code}: 资产卡写了「3/4」——模型会按侧身 45° 理解，锁脸变弱；"
                             "改为「正面，最多 5° 微侧」")
                     m_h = re.search(r"占画面高度约?\s*(\d+)\s*%", text)
+                    if not m_h:
+                        warnings.append(
+                            f"{code}: 角色资产图没写占画面高度——建议 92%–94%；"
+                            "人物太小，脸和服装细节分不到像素")
                     if m_h and int(m_h.group(1)) < 88:
                         errors.append(
                             f"{code}: 人物只占画面高度 {m_h.group(1)}%，脸与服装分到的像素太少；"
