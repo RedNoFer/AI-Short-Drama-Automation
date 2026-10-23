@@ -29,7 +29,7 @@ HEADER = """# 精简制作包
 #### 图片提示词
 
 ```text
-生成16:9横版白底角色四视图设定图。
+生成16:9横版角色资产图：单张、单人塑像式基准图，中性浅灰无缝背景，不作四视图、不作多视图拼版。
 ```
 
 ### 场景 LOC_01｜起点
@@ -330,11 +330,52 @@ class SequelValidatorTests(unittest.TestCase):
     def test_single_still_character_card_passes_layout_check(self):
         """一人一卡的单张剧照版式必须被认作合法角色版式。"""
         pkg = make_package().replace(
-            "生成16:9横版白底角色四视图设定图。",
+            "生成16:9横版角色资产图：单张、单人塑像式基准图，中性浅灰无缝背景，不作四视图、不作多视图拼版。",
             "生成16:9横版单张电影剧照，单人入画，3/4 侧身。")
         result = validator.validate(pkg, POLICY)
         self.assertTrue(result["ok"], result["errors"])
 
+
+    def test_wan30_package_rejects_inline_image_numbers(self):
+        """WAN30-04：包内不得写 @ImageN——编号由应用按上传顺序生成。"""
+        prompt = (
+            "【参考】@Image1＝CHAR_01；@Image2＝CHAR_02\n"
+            "【公共总规范】全段1拍0次硬切。阿泽（@Image1）：黑色碎短发。\n"
+            "【时间轴】\n0-30秒，镜头：中景。\n"
+            "【收尾】出口状态：无。\n"
+        )
+        errors, warnings = [], []
+        validator.check_prompt(
+            prompt, "E01", "SH01", 30, {"角色": ["CHAR_01", "CHAR_02"]},
+            POLICY, errors, char_names={"CHAR_01": "阿泽", "CHAR_02": "苏晚"},
+            model="wan30", warnings=warnings,
+            asset_codes={"CHAR_01", "CHAR_02"}, asset_prompts={})
+        self.assertTrue(any("WAN30-04" in e for e in errors), errors)
+
+    def test_wan30_name_only_reference_passes(self):
+        """改用资产名称点名后不再报 WAN30-04。"""
+        prompt = (
+            "【参考】CHAR_01 阿泽＝身份与服装唯一基准；CHAR_02 苏晚＝身份与服装唯一基准。\n"
+            "【公共总规范】全段1拍0次硬切。阿泽：黑色碎短发／左手腕旧手绳／深灰机能外套。\n"
+            "【时间轴】\n0-30秒，镜头：中景。\n"
+            "【收尾】出口状态：无。\n"
+        )
+        errors, warnings = [], []
+        validator.check_prompt(
+            prompt, "E01", "SH01", 30, {"角色": ["CHAR_01", "CHAR_02"]},
+            POLICY, errors, char_names={"CHAR_01": "阿泽", "CHAR_02": "苏晚"},
+            model="wan30", warnings=warnings,
+            asset_codes={"CHAR_01", "CHAR_02"}, asset_prompts={})
+        self.assertFalse(any("WAN30-04" in e for e in errors), errors)
+
+    def test_wan30_character_asset_must_be_single_statue(self):
+        """Wan3.0 角色资产图必须是单人塑像单张，不得四视图拼版。"""
+        pkg = make_package(rows=WAN_ROWS, pad=WAN_PAD).replace(
+            "生成16:9横版角色资产图：单张、单人塑像式基准图，中性浅灰无缝背景，不作四视图、不作多视图拼版。",
+            "生成16:9横版白底角色四视图设定图。")
+        result = validator.validate(pkg, POLICY, model="wan30", space_exempt=True)
+        self.assertFalse(result["ok"])
+        self.assertTrue(any("单人塑像" in e for e in result["errors"]), result["errors"])
 
     def test_reference_ledger_off_by_one_rejected(self):
         """WAN30-03：参考清单按上传顺序编号，正文 @ImageN 必须同序同人。"""

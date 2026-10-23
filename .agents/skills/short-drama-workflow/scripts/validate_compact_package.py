@@ -125,6 +125,19 @@ def _h3_section(prompt, field):
 
 
 
+
+def _strip_negated_terms(text: str) -> str:
+    """去掉「不是四视图／禁止多视角拼版」这类否定分句，只留下肯定性描述。"""
+    neg = re.compile(r"不是|并非|非|无|没有|禁止|不得|不用|避免|不作|不做|不使用")
+    term = re.compile(r"四视图|多视图|多视角|拼版|设定板")
+    kept = []
+    for seg in re.split(r"([，。；、])", text):
+        if term.search(seg) and neg.search(seg):
+            continue
+        kept.append(seg)
+    return "".join(kept)
+
+
 def check_prompt(prompt: str, episode: str, shot: str, duration: int, bindings: dict,
                  policy: dict, errors: list[str], char_names: dict | None = None,
                  oner: bool = False, model: str = "seedance25",
@@ -139,6 +152,11 @@ def check_prompt(prompt: str, episode: str, shot: str, duration: int, bindings: 
     if model == "h3":
         return check_h3_prompt(prompt, episode, shot, duration, bindings, policy,
                                errors, warnings, extra_fields=extra_fields)
+    # WAN30-04：包内不得写编号。编号由应用按上传顺序生成，离线包写死必然错位。
+    if model == "wan30" and IMAGE_NUMBER.search(prompt):
+        errors.append(
+            f"{label}: Wan3.0 轨包内禁止写 @ImageN/@图片N——编号由应用按实际上传顺序生成，"
+            "离线包写死必然与参考清单错位；请改用资产名称点名（WAN30-04）")
     # WAN30-03：应用按实际上传顺序生成「@图片N：类型「名称」」清单。
     # 正文 @ImageN 若与该清单错位，每个角色都会拿到别人的参考图。
     # 这段检查必须跑在段落结构校验之前——应用提交文本用的标题是【参考图片】而非【参考】。
@@ -1213,6 +1231,27 @@ def validate(source: str, policy: dict, model: str = "seedance25",
             elif layout not in asset["prompt"]:
                 errors.append(f"{code}: 图片提示词缺少默认{layout}版式")
             if kind == "角色":
+                if model == "wan30":
+                    text = asset["prompt"]
+                    single = ("单人" in text or "不出现第二人" in text
+                              or re.search(r"只有[^，。]{0,6}一个人", text))
+                    if not single:
+                        errors.append(
+                            f"{code}: Wan3.0 轨角色资产图必须是单人塑像图（缺少单人声明）")
+                    if "全身" not in text:
+                        warnings.append(
+                            f"{code}: 单人塑像图建议全身入画——只拍半身时下装、鞋与随身物无法锁定，"
+                            "成片里的裤子和鞋会由模型自由发挥")
+                    if "塑像" not in text and "单张" not in text:
+                        errors.append(
+                            f"{code}: Wan3.0 轨角色资产图须写明「单人塑像/单张」，不得用四视图拼版")
+                    cleaned = "\n".join(
+                        _strip_negated_terms(l) for l in text.split("\n")
+                        if not re.match(r"\s*(?:不要|禁止|不得|避免|不可|负向限制|排除)", l))
+                    if re.search(r"四视图|多视图|多视角|拼版|设定板", cleaned):
+                        errors.append(
+                            f"{code}: Wan3.0 轨角色资产图不得是四视图/多视图拼版——"
+                            "并排全身挂进视频参考会把排版、棚光、正装一起带进成片（WAN30-01）")
                 _check_character_prompt_fields(asset, policy, warnings)
     # 一人一卡：同一角色的第二张卡（CHAR_0X_PHOTO 之类的后缀变体）在导入端会被当成
     # 新角色，典型后果是 5 人变 10 人、旧的孤儿卡删不掉。这里按「去掉后缀后同名」判重。
