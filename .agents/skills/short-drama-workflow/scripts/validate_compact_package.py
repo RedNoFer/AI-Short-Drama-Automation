@@ -1325,6 +1325,19 @@ def validate(source: str, policy: dict, model: str = "seedance25",
                         errors.append(
                             f"{code}: Wan3.0 轨角色资产图不得是四视图/多视图拼版——"
                             "并排全身挂进视频参考会把排版、棚光、正装一起带进成片（WAN30-01）")
+                    if re.search(r"不看镜头|视线不看|视线落(?:在)?画外", text):
+                        errors.append(
+                            f"{code}: 资产卡写了「不看镜头／视线落在画外」——那是视频镜头纪律；"
+                            "写在卡上会让头转走，正脸与双眼数据损失一半。改为「双眼平视镜头」")
+                    if "3/4" in text or "３/４" in text:
+                        errors.append(
+                            f"{code}: 资产卡写了「3/4」——模型会按侧身 45° 理解，锁脸变弱；"
+                            "改为「正面，最多 5° 微侧」")
+                    m_h = re.search(r"占画面高度约?\s*(\d+)\s*%", text)
+                    if m_h and int(m_h.group(1)) < 88:
+                        errors.append(
+                            f"{code}: 人物只占画面高度 {m_h.group(1)}%，脸与服装分到的像素太少；"
+                            "资产卡占高须 92%–94%")
                 _check_character_prompt_fields(asset, policy, warnings)
     # 一人一卡：同一角色的第二张卡（CHAR_0X_PHOTO 之类的后缀变体）在导入端会被当成
     # 新角色，典型后果是 5 人变 10 人、旧的孤儿卡删不掉。这里按「去掉后缀后同名」判重。

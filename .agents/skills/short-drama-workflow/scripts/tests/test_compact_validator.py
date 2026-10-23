@@ -462,6 +462,15 @@ class SequelValidatorTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertTrue(any("WAN30-06" in e for e in result["errors"]), result["errors"])
 
+    def test_wan30_asset_rejects_side_gaze_and_three_quarter(self):
+        """资产卡写「不看镜头」或「3/4」会把人拍成斜侧面，锁脸变弱。"""
+        for bad in ("不看镜头", "3/4 站立", "占画面高度约 85%"):
+            pkg = make_package(rows=WAN_ROWS, pad=WAN_PAD).replace(
+                "深灰工装裤与深色徒步鞋，", f"深灰工装裤与深色徒步鞋，{bad}，")
+            result = validator.validate(pkg, POLICY, model="wan30", space_exempt=True)
+            self.assertFalse(result["ok"], bad)
+            self.assertTrue(any("资产卡" in e for e in result["errors"]), (bad, result["errors"]))
+
     def test_reference_ledger_off_by_one_rejected(self):
         """WAN30-03：参考清单按上传顺序编号，正文 @ImageN 必须同序同人。"""
         prompt = (
