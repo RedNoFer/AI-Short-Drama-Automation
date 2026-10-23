@@ -1134,21 +1134,25 @@ def check_outfit_consistency(parsed: dict, char_names: dict,
             outfits[code] = owner.group(1) if owner else ""
             # 负向限制里常写「不要平铺」，只看正向段
             positive = re.split(r"负向限制[：:]|不要[：:]", prompt)[0]
-            # 正向句里也常有「不是设定板／不是平铺陈列」，先剥掉否定短语
-            layout = re.sub(r"(?:不是|不出现|禁止|不要|不采用)[^、。；\n]{0,16}", "", positive)
-            if re.search(r"平铺|并列|设定板|拼版|多格", layout):
+            # 正向句里也常有「不是设定板／没有人体」，先剥掉否定短语
+            layout = re.sub(r"(?:不是|不出现|不含|没有|禁止|不要|不采用|无)"
+                            r"[^、。；\n]{0,16}", "", positive)
+            if re.search(r"并列|设定板|拼版|多格", layout):
                 errors.append(
-                    f"{code}: 服装变体的视频参考图必须是单张单人穿着全身图——"
-                    "平铺/并列/设定板会把排版与概念图风格带进视频；"
-                    "平铺板请另出内部存档，不上传")
-            if "全身入画" not in positive:
-                errors.append(f"{code}: 服装变体图必须全身入画（半身锁不住下装与鞋）")
-            if "占画面高度" not in positive:
-                warnings.append(f"{code}: 服装变体图未写占画面高度——建议 92%–94%")
-            if not re.search(r"真人|写实|摄影|实拍|CG|动画|国漫|漫剧", positive):
+                    f"{code}: 服装变体的参考图必须单张单主体——"
+                    "「平铺与穿着并列」/多格拼版/设定板会把排版与概念图风格带进视频")
+            if not re.search(r"平铺|隐形模特", layout):
                 errors.append(
-                    f"{code}: 服装变体图缺风格锚——必须复写角色资产的画风句"
-                    "（真人写实／CG），否则会按默认概念设定图风格生成")
+                    f"{code}: 服装变体图必须是纯服装图（平铺或隐形模特）——"
+                    "道具只锁衣服，脸与身形由角色塑像图锁")
+            if re.search(r"单人穿着|穿着态|站在[^。；\n]{0,12}背景前|人脸|人体|模特|假人|手部", layout):
+                errors.append(
+                    f"{code}: 服装变体图出现人体/人脸/模特——会生成第二张脸与第二套身份真值；"
+                    "改成平铺或隐形模特，画面里只留衣服")
+            if not re.search(r"真人|写实|摄影|实拍|CG|动画|国漫|漫剧", layout):
+                errors.append(
+                    f"{code}: 服装变体图缺风格锚——必须写「真实服装产品摄影／实物材质」"
+                    "或项目画风锚，否则会按默认概念设定图风格生成")
     stats = {"outfit_assets": len(outfits), "fragments": 0, "outfit_bound": 0}
     for episode in parsed["episodes"]:
         for shot in episode["shots"]:

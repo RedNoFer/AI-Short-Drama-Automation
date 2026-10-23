@@ -57,11 +57,11 @@ OUTFIT_ASSET = """
 #### 图片提示词
 
 ```text
-真人现实主义电影摄影质感，真实人物摄影，物理光照，自然人体比例；皮肤哑光真实质感，不做磨皮，无塑料感。
-16:9 单张单人穿着全身图：陈川站在中性浅灰无缝背景前，正面（身体正对、头正、平视镜头，最多 5° 微侧），全身入画、头顶到鞋底完整、脚底齐平、人物占画面高度 92%–94%，单视角、画面无文字。
-套装：深藏青单排扣羊毛西装外套，垫肩略方，哑光牛角扣两粒；白色府绸衬衫；炭灰西裤，裤线笔挺；黑色系带皮鞋。
+真实服装产品摄影，真实面料纹理与缝线，物理光照，自然褶皱与垂坠；不做 3D 渲染，不做塑料感，不磨皮。
+16:9 单张平铺服装图：浅灰无缝背景，俯拍平铺，一套衣服的各件分区摆放、互不遮挡；画面里没有人体、没有人脸、没有模特、没有手，不是多格拼版、不是设定板、不是穿着图。
+套装清单：深藏青单排扣羊毛西装外套，垫肩略方，哑光牛角扣两粒；白色府绸衬衫；炭灰西裤，裤线笔挺；黑色系带皮鞋。
 本套装供 CHAR_01 穿着，沿用 CHAR_01 身份母版的脸、发型与身形比例；与默认装为同一人物的另一套穿着，不是新人物。
-负向限制：3D 渲染、CG、卡通、平铺陈列、多格拼版、可读文字、水印。
+负向限制：3D 渲染、CG、卡通、人体、人脸、模特、多格拼版、可读文字、水印。
 ```
 """
 
@@ -174,21 +174,30 @@ class OutfitCheckTest(unittest.TestCase):
         errors, _ = run(build(rows=rows))
         self.assertTrue(any("锁定" in e for e in errors), errors)
 
+    def test_outfit_worn_person_is_error(self):
+        package = build(with_outfit_asset=True, props="道具：PROP_09\n",
+                        ref="PROP_09=本段服装唯一基准，由 CHAR_01 穿着；LOC_01=婚礼院子。")
+        package = package.replace(
+            "16:9 单张平铺服装图：浅灰无缝背景，俯拍平铺，一套衣服的各件分区摆放、互不遮挡",
+            "16:9 单张单人穿着全身图：陈川站在中性浅灰无缝背景前")
+        errors, _ = run(package)
+        self.assertTrue(any("人体/人脸/模特" in e for e in errors), errors)
+
     # ---- 2026-10-23 实证：服装变体生成成 3D 卡通 + 与默认装两套真值 ----
     def test_outfit_board_layout_is_error(self):
         package = build(with_outfit_asset=True, props="道具：PROP_09\n",
                         ref="PROP_09=本段服装唯一基准，由 CHAR_01 穿着；LOC_01=婚礼院子。")
-        package = package.replace("16:9 单张单人穿着全身图",
+        package = package.replace("16:9 单张平铺服装图",
                                   "16:9 服饰设定板，平铺与穿着态并列")
         errors, _ = run(package)
-        self.assertTrue(any("单张单人穿着全身图" in e for e in errors), errors)
+        self.assertTrue(any("单张单主体" in e for e in errors), errors)
 
     def test_outfit_missing_style_anchor_is_error(self):
         package = build(with_outfit_asset=True, props="道具：PROP_09\n",
                         ref="PROP_09=本段服装唯一基准，由 CHAR_01 穿着；LOC_01=婚礼院子。")
         package = package.replace(
-            "真人现实主义电影摄影质感，真实人物摄影，物理光照，自然人体比例；"
-            "皮肤哑光真实质感，不做磨皮，无塑料感。", "")
+            "真实服装产品摄影，真实面料纹理与缝线，物理光照，自然褶皱与垂坠；"
+            "不做 3D 渲染，不做塑料感，不磨皮。", "")
         errors, _ = run(package)
         self.assertTrue(any("缺风格锚" in e for e in errors), errors)
 
