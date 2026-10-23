@@ -293,6 +293,30 @@ STAGE2_ARTIFACTS = {
 }
 
 
+def _scene_plate_table_warnings(asset_text: str, warnings: list) -> None:
+    """阶段 2 场景资产表就要标清「场景图 0 人／空镜」，名称不得带可移动道具。
+
+    最终包由 validate_compact_package 硬拦；这里提前提醒，避免资产卡阶段把
+    人物或车辆写成场景固定物。
+    """
+    for line in asset_text.splitlines():
+        if not re.match(r"\|\s*LOC_[A-Za-z0-9_]+\s*\|", line):
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) < 3 or cells[1] != "场景":
+            continue
+        code, name, last = cells[0], cells[2], cells[-1]
+        if not re.search(r"0\s*人|空镜|无人物", last):
+            warnings.append(
+                f"阶段2 场景资产表 {code} 未标「场景图 0 人／空镜」："
+                "场景图只做空镜底板，人物与车辆由片段绑定与 PROP 承载")
+        vehicle = re.search(r"轿车|汽车|卡车|摩托|自行车|三轮车", name)
+        if vehicle:
+            warnings.append(
+                f"阶段2 场景资产 {code} 名称含可移动道具「{vehicle.group(0)}」："
+                "场景名去掉车辆，车辆另登记 PROP，否则模型会把车重新画进底图")
+
+
 def stage2(workdir: Path, names: list) -> tuple[list, list]:
     errors: list[str] = []
     warnings: list[str] = []
@@ -347,6 +371,7 @@ def stage2(workdir: Path, names: list) -> tuple[list, list]:
             errors.append(f"阶段2 独立评审记录「{review.name}」内容过短（<60 字符），视为未评审")
 
     _character_field_warnings(asset_text, _policy(), warnings)
+    _scene_plate_table_warnings(asset_text, warnings)
     # 站位层：风险场景必须各有基底
     brief = _read(_pick(internal, STAGE2_ARTIFACTS["项目输入单"]) or internal / "00-项目输入单.md")
     exempt = bool(EXEMPT_RE.search(brief))

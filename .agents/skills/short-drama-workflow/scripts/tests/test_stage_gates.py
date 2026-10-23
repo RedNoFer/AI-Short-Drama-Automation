@@ -368,3 +368,29 @@ class StageGateTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class ScenePlateTableTest(unittest.TestCase):
+    """阶段 2 场景资产表：空镜备注与去车辆命名。"""
+
+    def test_missing_empty_note_warns(self):
+        warnings: list[str] = []
+        gates._scene_plate_table_warnings(
+            "| LOC_01 | 场景 | 土路 | v1 | 定版 | 可用 |", warnings)
+        self.assertTrue(any("0 人" in w for w in warnings), warnings)
+
+    def test_vehicle_name_warns(self):
+        warnings: list[str] = []
+        gates._scene_plate_table_warnings(
+            "| LOC_02 | 场景 | 土路·黑色轿车 | v1 | 定版 | 场景图 0 人 |", warnings)
+        self.assertTrue(any("可移动道具" in w for w in warnings), warnings)
+
+    def test_clean_scene_row_passes(self):
+        warnings: list[str] = []
+        gates._scene_plate_table_warnings(
+            "| LOC_02 | 场景 | 盐田边土路 | v1 | 定版 | 场景图 0 人 0 车 |", warnings)
+        self.assertEqual(warnings, [])
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

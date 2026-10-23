@@ -16,7 +16,7 @@
 | R6 | 评审机制：一次对抗性独立评审（六视角＋登记轨分支硬规附录、带证据），回滚后全量复验；独立子任务、记录模板、修复复验预算、升级用户 | prompt-review.md | SKILL（阶段门/1/5/速度）、execution-checklist（6）、compact-import、delivery-contract、multi-agent-execution、policy.review、story-evaluation | 无（流程闸） | PROC-02 |
 | R7 | 小说原文块逐字来自用户源文件（支持 docx）；差异须授权登记；部分章节须声明范围 | compact-import.md | SKILL 阶段5、execution-checklist（阶段5）、prompt-review（上游交接）、project-brief（源文件登记）、multi-agent-execution | validate_novel_coverage.py（命中≥0.99/覆盖≥0.95） | — |
 | R8 | Seedance/Wan 默认 30 秒片段、6–11 镜、5–10 硬切；Seedance 整数秒/分档 2000·3000·4500，Wan 0.5 秒/20000；H3 见 R25/R30 | runtime-planning.md；数值在 policy.video | SKILL（输入/阶段3/边界）、compact-import、prompt-review、validation-contract、delivery-contract | validate_compact_package（时间轴/硬切/字符） | PROC-02 |
-| R9 | 资产版式：角色 16:9 白底四视图、场景 16:9 单张全景；图片提示词不带声音 | asset-image-production.md；policy.assets | SKILL 阶段2、compact-import、character-asset-prompts 技能 | validate_compact_package（16:9/四视图/全景字样） | — |
+| R9 | 资产版式：角色 16:9 白底四视图、场景 16:9 单张**空镜**全景（0 人 0 车 0 手持道具）；真人资产先写真实感锚；图片提示词不带声音 | asset-image-production.md；policy.assets.scene_prompt | SKILL 阶段2、compact-import、character-asset-prompts 技能 | validate_compact_package（16:9/四视图/全景字样＋场景人物/车辆/油润词/真实感锚） | — |
 | R10 | Seedance/H3 单 MD 不预写 @Image/@图片 编号；Wan 可写 `@ImageN` 但须指向真实资产；H3 用 `<Picture N>` 且未上传不得预写；绑定代码=【参考】代码；每片段至多一场景 | compact-import.md | SKILL 阶段4、prompt-review、validation-contract、model-branch-matrix | validate_compact_package（@Image 拦截、绑定/参考/场景数校验） | SYNC-01 |
 | R11 | 阶段门：必读白名单、内部档案落盘、执行账一行结论，禁跳读/合并阶段/记忆引用 | execution-checklist.md | SKILL（阶段门）、multi-agent-execution（派单与放行）、project-brief | 无（流程闸） | PROC-01 |
 | R12 | 多智能体隔离执行：总控/执行员/评审员分离子任务，交接包给路径不给全文，母版冻结后才能并行 | multi-agent-execution.md | execution-checklist（执行方式）、SKILL（阶段门）、policy.execution | 无（流程闸） | PROC-01 |

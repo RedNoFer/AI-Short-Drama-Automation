@@ -73,6 +73,16 @@ class ScenePlateTest(unittest.TestCase):
         errors, _ = self.run_plate(PLATE + "走廊尽头是护士站。")
         self.assertFalse(any("人物" in e for e in errors), errors)
 
+    def test_policy_can_extend_person_words(self):
+        policy = {"assets": {"scene_prompt": {"person_pattern": "掌柜"}}}
+        errors: list[str] = []
+        warnings: list[str] = []
+        validator.check_scene_plate(
+            [{"code": "LOC_01", "kind": "场景", "name": "柜台",
+              "prompt": PLATE + "柜台后站着掌柜。"}],
+            errors, warnings, policy)
+        self.assertTrue(any("人物" in e for e in errors), errors)
+
     def test_missing_realism_anchor_is_warning(self):
         _, warnings = self.run_plate(
             "16:9 单张全景。画面中无人物。本卡是场景底板：只锁空间、光位与材质。")
