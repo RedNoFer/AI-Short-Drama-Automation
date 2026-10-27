@@ -7,10 +7,15 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import workflow_common as wc
+from validate_compact_package import parse_structure
 
 BRANCHES = ("seedance25", "wan30", "h3")
 LABEL_TO_BRANCH = {
@@ -57,8 +62,64 @@ def detect_branch(text: str) -> tuple[str | None, list[str]]:
     return None, ["输入单未识别到生成轨（seedance25 / wan30 / h3）"]
 
 
-def has_verdict(text: str) -> bool:
-    return bool(re.search(r"(通过|需修改|不通过|有条件通过)", text))
+def has_pass_verdict(text: str) -> bool:
+    """只把明确写成「通过」的结论视为放行；有问题/需修改不是有效放行。"""
+    return bool(re.search(
+        r"^\s*(?:[-*]\s*)?(?:(?:总体|阶段\s*\d+放行|评审)\s*)?结论\s*[：:]\s*通过(?:\s*[，,。；;]|$)",
+        text, re.M))
+
+
+def _section_text(text: str, label: str) -> str:
+    return wc.markdown_section(text, label)
+
+
+def _section_pass(text: str, label: str) -> bool:
+    section = _section_text(text, label)
+    match = re.search(r"^\s*(?:[-*]\s*)?结论\s*[：:]\s*([^\n。；;，,]+)", section, re.M)
+    return bool(match and match.group(1).strip() == "通过")
+
+
+def _package_prompt_hashes(package: Path | None) -> tuple[dict[str, str], list[str]]:
+    """读最终包的 episode/segment 字段，计算每条视频提示词正文的 SHA-256。"""
+    if package is None or not package.is_file():
+        return {}, ["缺少精简制作包，无法核对阶段 4 全覆盖评审"]
+    parsed = parse_structure(read_text(package))
+    errors = [f"制作包结构：{issue}" for issue in parsed["errors"]]
+    hashes: dict[str, str] = {}
+    for episode in parsed["episodes"]:
+        for shot in episode["shots"]:
+            segment_id = f"{episode['code']}-{shot['code']}"
+            if segment_id in hashes:
+                errors.append(f"制作包片段 ID 重复：{segment_id}")
+                continue
+            prompt = shot["prompts"].get("视频提示词")
+            if prompt is None or not prompt.strip():
+                errors.append(f"制作包片段 {segment_id} 缺少可计算的「视频提示词」text 块")
+                continue
+            hashes[segment_id] = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+    if not hashes and not errors:
+        errors.append("制作包未提取到任何片段提示词，不能证明全覆盖")
+    return hashes, errors
+
+
+def _review_hash_coverage(report: str, expected: dict[str, str]) -> list[str]:
+    return wc.review_row_errors(report, expected)
+
+
+def _review_release_errors(report: str, label: str, reviewer_required: bool = True) -> list[str]:
+    """The current global summary, not an old/local verdict, controls stage release."""
+    summary = wc.markdown_section(report, "全局汇总") or report
+    verdicts = re.findall(
+        r"^\s*(?:[-*]\s*)?(?:(?:总体|整体|总评|评审)\s*)?结论\s*[：:]\s*([^\n。；;，,]+)", summary, re.M)
+    counts = re.findall(r"^\s*(?:[-*]\s*)?未关闭阻断/重要缺陷\s*[：:]\s*(\d+)\s*$", summary, re.M)
+    errors = []
+    if not verdicts or any(verdict.strip() != "通过" for verdict in verdicts):
+        errors.append(f"阶段 4 {label} 必须明确写「结论：通过」，且全局汇总不得含冲突结论")
+    if not counts or any(int(count) != 0 for count in counts):
+        errors.append(f"阶段 4 {label} 必须明确写「未关闭阻断/重要缺陷：0」")
+    if reviewer_required and not re.search(r"(评稿人|评审人|子任务|模型)", report):
+        errors.append(f"阶段 4 {label} 未标明独立评审人")
+    return errors
 
 
 def check_review_stage1(internal: Path, strict: bool, errors: list[str], warnings: list[str]) -> None:
@@ -68,33 +129,51 @@ def check_review_stage1(internal: Path, strict: bool, errors: list[str], warning
         msg = "阶段 1 评审缺失：内部/01c-剧情评审.md"
         (errors if strict else warnings).append(msg)
         return
-    if len(text) < 200 or text.count("评审") < 3 or not has_verdict(text):
-        msg = "阶段 1 评审内容不足：需覆盖事件/分集、逐集剧本、片段规划三次评审并含结论"
+    checkpoints = ("事件/分集", "逐集剧本", "片段规划")
+    missing = [label for label in checkpoints if not _section_pass(text, label)]
+    if len(text) < 200 or missing:
+        detail = "、".join(missing) if missing else "评审正文不足"
+        msg = f"阶段 1 评审未能证明三个交接点均通过：{detail}"
         (errors if strict else warnings).append(msg)
 
 
-def check_review_stage4(internal: Path, strict: bool, errors: list[str], warnings: list[str]) -> None:
+def check_review_stage4(internal: Path, package: Path | None, strict: bool,
+                       errors: list[str], warnings: list[str]) -> None:
+    expected_hashes, hash_errors = _package_prompt_hashes(package)
     canonical = internal / "05-提示词评审与整改.md"
     text = read_text(canonical)
     if text.strip():
-        if not has_verdict(text) or not re.search(r"(评稿人|评审人|子任务|模型)", text):
-            msg = "阶段 4 评审 05 缺少结论或评稿人标识"
-            (errors if strict else warnings).append(msg)
+        for issue in (_review_release_errors(text, "评审 05") + hash_errors
+                      + _review_hash_coverage(text, expected_hashes)):
+            (errors if strict else warnings).append(issue)
         return
 
-    a = "\n".join(read_text(p) for p in sorted(internal.glob("05a-*.md")))
-    b = "\n".join(read_text(p) for p in sorted(internal.glob("05b-*.md")))
+    candidates = [p for p in sorted(internal.glob("05*-*.md"))
+                  if re.match(r"05[a-z]+-", p.name)]
     index = read_text(internal / "05-评审索引.md")
-    if a.strip() and b.strip() and index.strip():
-        if "05a" not in index or "05b" not in index:
-            msg = "05-评审索引.md 未同时指向 05a/05b"
-            (errors if strict else warnings).append(msg)
+    if index.strip():
+        # Read only reports listed in the index; archived/unlisted drafts do not
+        # invalidate an accepted review. Legacy 05a/05b prefix links remain valid.
+        selected = [p for p in candidates if p.name in index or re.search(
+            rf"(?<![A-Za-z0-9_]){re.escape(p.name.split('-')[0])}(?![A-Za-z0-9_-])", index)]
+        reports = [(p.name, read_text(p)) for p in selected]
+        referenced = set(re.findall(r"\b05[a-z]+\b", index))
+        missing = referenced - {p.name.split('-')[0] for p in selected}
+        issues = [f"05-评审索引.md 引用的评审不存在：{name}" for name in sorted(missing)]
+        if not reports:
+            issues.append("05-评审索引.md 未指向任何有效的分拆评审文件")
+        for label, report in reports + [("评审索引", index)]:
+            issues.extend(_review_release_errors(report, label, reviewer_required=label != "评审索引"))
+        # The index routes reports; its optional digest summary is not a second review.
+        combined = "\n".join(report for _, report in reports)
+        for issue in issues + hash_errors + _review_hash_coverage(combined, expected_hashes):
+            (errors if strict else warnings).append(issue)
         return
-    if a.strip() and b.strip():
-        msg = "阶段 4 评审为 05a/05b 分拆，但缺 05-评审索引.md"
+    if candidates:
+        msg = "阶段 4 评审已分拆，但缺 05-评审索引.md"
         (errors if strict else warnings).append(msg)
         return
-    msg = "阶段 4 评审缺失：内部/05-提示词评审与整改.md（或 05a/05b＋05-评审索引.md）"
+    msg = "阶段 4 评审缺失：内部/05-提示词评审与整改.md（或索引列出的分拆报告＋05-评审索引.md）"
     (errors if strict else warnings).append(msg)
 
 
@@ -165,15 +244,17 @@ def validate(workdir: Path, strict: bool = False) -> dict:
         check_gate_output(internal, branch, errors, warnings)
         check_ledger(internal, branch, strict, errors, warnings)
 
-    check_review_stage1(internal, strict, errors, warnings)
-    check_review_stage4(internal, strict, errors, warnings)
     package = find_package(workdir, errors)
+    check_review_stage1(internal, strict, errors, warnings)
+    check_review_stage4(internal, package, strict, errors, warnings)
+    prompt_hashes, _ = _package_prompt_hashes(package)
 
     return {
         "ok": not errors,
         "workdir": str(workdir),
         "branch": branch,
         "package": package.name if package else None,
+        "expected_prompt_sha256": prompt_hashes,
         "strict": strict,
         "errors": errors,
         "warnings": warnings,
@@ -198,6 +279,10 @@ def main() -> int:
             print(f"错误：{item}")
         for item in result["warnings"]:
             print(f"提醒：{item}")
+        if result["expected_prompt_sha256"]:
+            print("当前包提示词正文 SHA-256（用于阶段4评审覆盖表）：")
+            for segment_id, digest in result["expected_prompt_sha256"].items():
+                print(f"  {segment_id}  {digest}")
         print(f"结果：{'通过' if result['ok'] else '失败'}（{len(result['errors'])} 错误 / {len(result['warnings'])} 提醒）")
     return 0 if result["ok"] else 1
 

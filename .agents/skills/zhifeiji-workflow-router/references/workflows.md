@@ -79,7 +79,7 @@
 
 ## W16｜Wan3.0 提示词轨（生成模型双轨）
 
-按生成模型选轨：Seedance 2.5 走既有 S18＋小墨规范；**Wan3.0** 走 [Wan3.0 提示词规范](../../short-drama-workflow/references/wan30-prompt-spec.md)（写法标准）与 [Wan3.0 通用提示词生成适配器 v1.0](../../short-drama-workflow/references/wan30-adapter-v1.0.md)（编译器手册，与 S18 同构）——20000 字符上限（用户目标 8000–15000，防稀释）、2–30 秒弹性时长／智能时长、0.5 秒拍点粒度、多模态参考（10 图＋5 视频作动作/运镜/特效参考＋5 音频作音色/口型驱动＋文件参考）、一致性显式枚举条款、@Image/@Video/@Audio 绑定与 `<音效>` 点标记、编辑指令整改分级。分镜层与六视角质检两轨共用；机检 `--model` 分支就绪前 Wan 轨片段人工核数。触发语：Wan3.0、万相轨、换模型写提示词。
+按项目登记的生成模型选轨：Seedance 2.5 走既有 S18＋小墨规范；**Wan3.0** 走 [Wan3.0 提示词规范](../../short-drama-workflow/references/wan30-prompt-spec.md)（写法标准）与 [Wan3.0 通用提示词生成适配器 v1.0](../../short-drama-workflow/references/wan30-adapter-v1.0.md)（编译器）；H3 另见 W17。Wan 仅设18000字符硬上限，无字数下限，按逐镜清晰完整性评审；采用2–30秒片段、0.5秒时间粒度及本轨多模态参考规则。制作包正文用【参考】【公共总规范】【时间轴】【收尾】四段，参考按资产代码绑定，不预写上传图片编号；真实素材槽位由应用提交时映射。分镜与剧情、空间、声音、内容表达的质量检查沿用共用工作流，编译后运行 `validate_compact_package.py --model wan30` 与 Wan 反例审计，不套Seedance字符档。触发语：Wan3.0、万相轨、换模型写提示词。
 
 ## W17｜MiniMax H3 提示词轨（H3 结构化分支）
 

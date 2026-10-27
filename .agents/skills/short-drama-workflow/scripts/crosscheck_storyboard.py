@@ -6,7 +6,7 @@
 小墨 6.3 的视感配额（固定镜头≤10%、焦段≥4 种、机位角度≥6 种、禁连续固定、
 景别不连三近景）以前只写在散文式自查里，由 agent 手算、由评审事后复核。
 后果和 PROC-05 同型：**统计错了没人知道，声明和事实不一致也没人知道**，
-只能等到阶段 5 评审时靠人再读一遍——正是「出问题之后才解决」。
+过去只能等到交付末尾再靠人重读；现已前移到阶段 3 出口门，在提示词开工前发现视感统计与逐镜表不一致。
 
 本脚本把可机械统计的部分前移到阶段 3 出口门：
   · 声明值 vs 实算值不一致 → 判错（阻断）；
@@ -48,6 +48,9 @@ OPTIONAL_KEYS = {
     "备注": ("备注", "说明"),
 }
 REQUIRED_STATS = ["镜数", "固定", "固定占比", "焦段种数", "机位角度种数", "侧45占比"]
+SEGMENT_HEADING_RE = re.compile(
+    r"^(#{2,6})\s+.*?(?:E\d{2}[-_]SH\d{2}|C\d{2})(?=$|[\s｜|])", re.M)
+SEGMENT_ID_RE = re.compile(r"(E\d{2}[-_]SH\d{2}|C\d{2})(?=$|[\s｜|])")
 
 
 # ---------------------------------------------------------------- 解析
@@ -257,7 +260,25 @@ def parse_declared(text: str) -> tuple[dict, str | None]:
     return out, raw
 
 
-def check_text(text: str, label: str = "分镜", tier: str = "tier2_xiaomo63") -> tuple[list, list]:
+def segment_documents(text: str) -> list[tuple[str, str]]:
+    """Return clip-scoped sections so a whole storyboard never compares every clip to one stat row."""
+    headings = list(SEGMENT_HEADING_RE.finditer(text))
+    if not headings:
+        return [("分镜", text)]
+    documents: list[tuple[str, str]] = []
+    for index, heading in enumerate(headings):
+        start = heading.start()
+        end = headings[index + 1].start() if index + 1 < len(headings) else len(text)
+        block = text[start:end]
+        shots, _ = parse_shots(block)
+        if shots or STAT_RE.search(block):
+            title = text[heading.start():text.find("\n", heading.start())].lstrip("# ").strip()
+            match = SEGMENT_ID_RE.search(title)
+            documents.append((match.group(1) if match else title or "分镜", block))
+    return documents or [("分镜", text)]
+
+
+def _check_one(text: str, label: str, tier: str) -> tuple[list, list]:
     errors: list[str] = []
     warnings: list[str] = []
     shots, parse_errors = parse_shots(text)
@@ -314,13 +335,33 @@ def check_text(text: str, label: str = "分镜", tier: str = "tier2_xiaomo63") -
     return errors, warnings
 
 
+def check_text(text: str, label: str = "分镜", tier: str = "tier2_xiaomo63") -> tuple[list, list]:
+    """Check each clip independently; retain whole-file behavior for a one-clip document."""
+    documents = segment_documents(text)
+    if len(documents) == 1:
+        return _check_one(text, label, tier)
+    errors: list[str] = []
+    warnings: list[str] = []
+    for clip_label, block in documents:
+        clip_errors, clip_warnings = _check_one(block, f"{label} / {clip_label}", tier)
+        errors.extend(clip_errors)
+        warnings.extend(clip_warnings)
+    return errors, warnings
+
+
 def emit(text: str) -> str:
-    shots, errors = parse_shots(text)
-    if not shots:
-        return "\n".join(errors)
-    computed = stats(shots)
-    parts = [f"{k}={computed[k]:g}{'%' if k.endswith('占比') else ''}" for k in REQUIRED_STATS]
-    return "视感统计：" + "；".join(parts)
+    output = []
+    documents = segment_documents(text)
+    for label, block in documents:
+        shots, errors = parse_shots(block)
+        if not shots:
+            output.extend(errors)
+            continue
+        computed = stats(shots)
+        parts = [f"{k}={computed[k]:g}{'%' if k.endswith('占比') else ''}" for k in REQUIRED_STATS]
+        prefix = f"{label}：" if len(documents) > 1 and label != "分镜" else ""
+        output.append(prefix + "视感统计：" + "；".join(parts))
+    return "\n".join(output)
 
 
 def main() -> int:

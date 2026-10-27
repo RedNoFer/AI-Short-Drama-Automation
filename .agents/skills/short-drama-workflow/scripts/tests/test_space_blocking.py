@@ -93,6 +93,38 @@ class SpaceBlockingTest(unittest.TestCase):
         errors, _ = run_docs({"SCENE_LOC_02.json": BASE, "E01_SH01_S01.json": doc})
         self.assertTrue(any("未接地" in e for e in errors), errors)
 
+    def test_standing_on_declared_elevated_surface_passes(self):
+        import copy
+        base = copy.deepcopy(BASE)
+        base["props"].append({"id": "porch", "name": "前廊平台", "kind": "box",
+                              "size": [2.0, 0.2, 2.0], "position": [0, 0.35, 1.2],
+                              "walkableSurface": True})
+        base["characters"][0]["position"] = [0, 0.45, 1.2]
+        base["characters"][0]["supportSurfaceId"] = "porch"
+        doc = json.loads(json.dumps(OVERLAY))
+        doc["characters"][0]["position"] = [0, 0.45, 1.2]
+        doc["characters"][0]["supportSurfaceId"] = "porch"
+        errors, warnings = run_docs({"SCENE_LOC_02.json": base, "E01_SH01_S01.json": doc})
+        self.assertFalse(any("未接地" in e for e in errors), errors)
+        self.assertFalse(any("porch" in w for w in warnings), warnings)
+
+    def test_standing_support_surface_must_match_height_and_footprint(self):
+        import copy
+        base = copy.deepcopy(BASE)
+        base["props"].append({"id": "porch", "name": "前廊平台", "kind": "box",
+                              "size": [2.0, 0.2, 2.0], "position": [0, 0.35, 1.2],
+                              "walkableSurface": True})
+        base["characters"][0]["position"] = [0, 0.45, 1.2]
+        base["characters"][0]["supportSurfaceId"] = "porch"
+        doc = json.loads(json.dumps(OVERLAY))
+        doc["characters"][0]["position"] = [0, 0.40, 1.2]
+        doc["characters"][0]["supportSurfaceId"] = "porch"
+        errors, _ = run_docs({"SCENE_LOC_02.json": base, "E01_SH01_S01.json": doc})
+        self.assertTrue(any("顶面" in e for e in errors), errors)
+        doc["characters"][0]["position"] = [3.0, 0.45, 1.2]
+        errors, _ = run_docs({"SCENE_LOC_02.json": base, "E01_SH01_S01.json": doc})
+        self.assertTrue(any("水平范围" in e for e in errors), errors)
+
     def test_sit_without_support_is_error(self):
         doc = json.loads(json.dumps(OVERLAY))
         doc["characters"][1]["position"] = [0, 0.45, 2.4]

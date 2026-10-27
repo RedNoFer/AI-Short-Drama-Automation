@@ -43,6 +43,12 @@ def doc(stat: str = GOOD_STAT, items: list[tuple] | None = None) -> str:
     return HEAD.format(stat=stat) + TABLE_HEAD + rows(items or GOOD_ROWS)
 
 
+def clip_doc(clip_id: str, stat: str = GOOD_STAT,
+             items: list[tuple] | None = None) -> str:
+    return (f"## {clip_id}\n\n{stat}\n\n" + TABLE_HEAD
+            + rows(items or GOOD_ROWS))
+
+
 class CrosscheckTests(unittest.TestCase):
     # ---------- 不该误拦 ----------
     def test_valid_storyboard_passes(self):
@@ -144,6 +150,25 @@ class CrosscheckTests(unittest.TestCase):
     def test_no_table_is_error(self):
         errors, _ = cross.check_text("# 04 分镜\n\n只有散文，没有表。\n")
         self.assertTrue(any("逐镜表" in e for e in errors), errors)
+
+    def test_multi_clip_file_checks_each_clip_against_its_own_stats(self):
+        # 机位角度种数允许 ±1 的格式容差，因此要差 2 才能验证分段隔离。
+        wrong = GOOD_STAT.replace("机位角度种数=6", "机位角度种数=4")
+        source = clip_doc("E01-SH01") + "\n\n" + clip_doc("E01-SH02", stat=wrong)
+        errors, _ = cross.check_text(source)
+        self.assertTrue(any("E01-SH02" in e and "机位角度种数" in e for e in errors), errors)
+        self.assertFalse(any("E01-SH01" in e for e in errors), errors)
+
+    def test_multi_clip_segment_missing_stats_is_error(self):
+        source = clip_doc("E01-SH01") + "\n\n## E01-SH02\n\n" + TABLE_HEAD + rows(GOOD_ROWS)
+        errors, _ = cross.check_text(source)
+        self.assertTrue(any("E01-SH02" in e and "视感统计" in e for e in errors), errors)
+
+    def test_emit_prints_one_stats_line_per_clip(self):
+        source = clip_doc("E01-SH01") + "\n\n## E01-SH02\n\n" + TABLE_HEAD + rows(GOOD_ROWS)
+        emitted = cross.emit(source)
+        self.assertEqual(len([line for line in emitted.splitlines() if "视感统计：" in line]), 2)
+        self.assertTrue(emitted.startswith("E01-SH01：视感统计："), emitted)
 
 
 if __name__ == "__main__":

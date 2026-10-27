@@ -127,6 +127,14 @@ def validate_clip(
         errors.append("片段缺少 id")
         return {}
     stats = {"id": clip_id}
+    model = str(clip.get("model", "")).strip().lower()
+    if model not in {"seedance 2.5", "seedance25"}:
+        errors.append(
+            f"{clip_id}: validate_delivery.py 是旧式 Seedance 2.5 展开包校验器，"
+            "不接受缺失或非 Seedance 模型轨；Wan3.0/H3 必须使用 validate_compact_package.py"
+        )
+        return stats
+        return stats
     duration = clip.get("duration_sec")
     default_duration = video_policy["default_duration_sec"]
     if duration != default_duration:

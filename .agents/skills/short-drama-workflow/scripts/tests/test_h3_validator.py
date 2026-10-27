@@ -57,7 +57,7 @@ retention_analysis:
 
 detailed_description:
 The target video is in a realistic live-action style.
-[Shot 1] The shot begins from <Picture 1>, showing <Subject 1> walking along <Subject 2>. The camera tracks right with small amplitude at slow speed. <Subject 1> (S1) says softly, <d>[English] The wind keeps my pace.</d>
+[Shot 1] The shot begins from <Picture 1>, showing <Subject 1> walking along <Subject 2>. The camera tracks right with small amplitude at slow speed. <Subject 1> (S1) says softly, <d>[English] The wind keeps my pace.</d> Native speech estimate: 1.8s; pauses: 0.4s.
 
 overall_soundscape: Steady surf and light wind continue beneath the whole clip.
 
@@ -102,6 +102,24 @@ class H3ValidatorTests(unittest.TestCase):
         result = self.validate(package(REF_BODY, duration=8))
         self.assertTrue(result["ok"], result["errors"])
         self.assertEqual(result["stats"][0]["mode"], "ref2va")
+
+    def test_native_h3_missing_timing_rejected(self):
+        body = REF_BODY.replace(" Native speech estimate: 1.8s; pauses: 0.4s.", "")
+        result = self.validate(package(body, duration=8))
+        self.assertTrue(any("非汉语实际台词" in e for e in result["errors"]), result)
+
+    def test_native_h3_timing_must_be_outside_spoken_tag(self):
+        body = REF_BODY.replace("</d> Native speech estimate: 1.8s; pauses: 0.4s.",
+                                " Native speech estimate: 1.8s; pauses: 0.4s.</d>")
+        result = self.validate(package(body, duration=8))
+        self.assertTrue(any("非汉语实际台词" in e for e in result["errors"]), result)
+
+    def test_native_h3_next_cut_defines_speech_window(self):
+        body = BASE_BODY.replace("[Chinese] 走完这一段，路就有了。",
+                                 "[Thai] แม่ฉันเหรอ?")
+        body = body.replace("</d>", "</d> Native speech estimate: 6.2s; pauses: 0.4s.")
+        result = self.validate(package(body))
+        self.assertTrue(any("超过镜内6.5秒" in e for e in result["errors"]), result)
 
     def test_app_segment_duration_allowed_with_notice(self):
         """app 模式：片段时长沿用应用单位（30 秒），超官方单条上限只提醒。"""
@@ -166,6 +184,15 @@ class H3ValidatorTests(unittest.TestCase):
         result = self.validate(package(body))
         self.assertFalse(result["ok"])
         self.assertTrue(any("超过本项目 H3 上限" in e for e in result["errors"]), result["errors"])
+
+    def test_h3_prompt_between_seedance_default_and_h3_cap_passes(self):
+        """H3's 6000-char cap must not inherit Seedance's 3000-char default."""
+        filler = "The camera tracks across the wet road as the mist lifts from the tree line. " * 55
+        body = BASE_BODY.replace("overall_soundscape:", filler + "\n\noverall_soundscape:")
+        self.assertGreater(len(body), 3000)
+        self.assertLess(len(body), 6000)
+        result = self.validate(package(body))
+        self.assertTrue(result["ok"], result["errors"])
 
     def test_first_frame_field_requires_picture_tag(self):
         extra = "\n#### 首帧提示词\n\n```text\n16:9 电影剧照：阿泽蹲在零公里碑旁。\n```\n"

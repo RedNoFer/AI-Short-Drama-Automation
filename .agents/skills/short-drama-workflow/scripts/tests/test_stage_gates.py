@@ -20,6 +20,7 @@
 from __future__ import annotations
 
 import importlib.util
+import copy
 import json
 import tempfile
 import unittest
@@ -29,6 +30,10 @@ ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location("stage_gates", ROOT / "scripts" / "validate_stage_artifacts.py")
 gates = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(gates)
+fixture_spec = importlib.util.spec_from_file_location(
+    "compact_validator_test_fixtures", ROOT / "scripts" / "tests" / "test_compact_validator.py")
+compact_fixtures = importlib.util.module_from_spec(fixture_spec)
+fixture_spec.loader.exec_module(compact_fixtures)
 
 ROLES = """### 角色 CHAR_01｜阿泽（领队）
 
@@ -67,6 +72,7 @@ REVIEW_OK = """# 阶段 2 资产独立评审（评稿人：子任务 R-03）
 
 - 资产图写全外观、空间与形制；视频正文只写机位、动作与状态变化；同一事实没有在两个资产或正文里重复。
 - 结论：通过，无阻断项。
+- 未关闭阻断/重要缺陷：0
 """
 
 ROUTING_OK = """# 打斗路由判定表
@@ -81,14 +87,14 @@ SHOT_TABLE = """### 视感自查
 
 视感统计：镜数=6；固定=0；固定占比=0%；焦段种数=4；机位角度种数=6；侧45占比=33.3%
 
-| 镜 | 景别 | 焦段 | 机位 | 运镜 | 景深 | 固定 |
-|---|---|---|---|---|---|---|
-| S01 | 大远景 | 24mm | 正面平视 | 极缓慢横移 | 深 | 否 |
-| S02 | 全景 | 35mm | 侧45平视 | 极缓慢横移 | 深 | 否 |
-| S03 | 中景 | 50mm | 侧45微俯 | 手持微晃跟拍 | 浅 | 否 |
-| S04 | 中近景 | 85mm | 侧面90平视 | 极缓推镜 | 浅 | 否 |
-| S05 | 特写 | 50mm | 侧背平视 | 极缓推镜 | 浅 | 否 |
-| S06 | 全景 | 35mm | 背面平视 | 缓慢拉镜 | 深 | 否 |
+| 镜 | 起止 | 景别 | 焦段 | 机位 | 运镜 | 景深 | 固定 |
+|---|---|---|---|---|---|---|---|
+| S01 | 0-5 | 大远景 | 24mm | 正面平视 | 极缓慢横移 | 深 | 否 |
+| S02 | 5-10 | 全景 | 35mm | 侧45平视 | 极缓慢横移 | 深 | 否 |
+| S03 | 10-15 | 中景 | 50mm | 侧45微俯 | 手持微晃跟拍 | 浅 | 否 |
+| S04 | 15-20 | 中近景 | 85mm | 侧面90平视 | 极缓推镜 | 浅 | 否 |
+| S05 | 20-25 | 特写 | 50mm | 侧背平视 | 极缓推镜 | 浅 | 否 |
+| S06 | 25-30 | 全景 | 35mm | 背面平视 | 缓慢拉镜 | 深 | 否 |
 
 ### 上下文衔接自查
 
@@ -112,13 +118,30 @@ SHOT_TABLE = """### 视感自查
 SHARD = "# E01\n\n" + SHOT_TABLE
 
 
+def write_complete_facts(workdir: Path) -> Path:
+    """Derive actual spans from the fixture board and fill explicit frozen states."""
+    facts, path = gates.continuity.init_facts(workdir, None)
+    for segment in facts["segments"]:
+        state = {
+            "location": "LOC_01", "time_of_day": "清晨", "light": "公路晨光",
+            "characters": [{"code": "CHAR_01", "pos": "公路起点", "face": "道路前方",
+                            "costume": "深灰机能外套", "injury": "无伤"}],
+            "props": [],
+        }
+        segment["entry"] = copy.deepcopy(state)
+        segment["exit"] = copy.deepcopy(state)
+    path.write_text(json.dumps(facts, ensure_ascii=False), encoding="utf-8")
+    return path
+
+
 def build(workdir: Path, *, input_extra: str = "", assets: str = None, script: str = None,
           bases: dict | None = None, overlays: dict | None = None,
           shards: dict | None = None, inheritance: bool = False,
           review: bool = True, routing: bool = True) -> Path:
     internal = workdir / "内部"
     internal.mkdir(parents=True, exist_ok=True)
-    (internal / "00-项目输入单.md").write_text(f"# 项目输入单\n\n{input_extra}\n", encoding="utf-8")
+    (internal / "00-项目输入单.md").write_text(
+        f"# 项目输入单\n\n| 生成轨 | seedance25 |\n\n{input_extra}\n", encoding="utf-8")
     (internal / "01-故事档案与分集规划.md").write_text("# 分集规划\n", encoding="utf-8")
     (internal / "02-逐集拍摄剧本.md").write_text(
         script if script is not None else "# 剧本\n\n### 场景 LOC_01｜公路\n阿泽：走。\n苏晚：好。\n", encoding="utf-8")
@@ -144,6 +167,14 @@ def build(workdir: Path, *, input_extra: str = "", assets: str = None, script: s
         shard_dir.mkdir(parents=True, exist_ok=True)
         for name, text in shards.items():
             (shard_dir / f"{name}.md").write_text(text, encoding="utf-8")
+        # Gate continuity reads a frozen canonical board, not an unversioned shard.
+        board = "\n".join(shards.values()).replace(
+            "# E01\n", "# E01\n\n## E01_SH01｜C01｜对话｜30秒\n场景：LOC_01｜角色：CHAR_01\n")
+        # Explicit segment headings in negative coverage fixtures stay unchanged.
+        if "场景：LOC_01｜角色：CHAR_01" not in board:
+            board = board.replace("### 视感自查", "场景：LOC_01｜角色：CHAR_01\n\n### 视感自查")
+        (internal / "04-片段规划与逐镜表.md").write_text(board, encoding="utf-8")
+        write_complete_facts(workdir)
     return workdir
 
 
@@ -161,7 +192,7 @@ OVERLAY_DOC = {
     "version": "1.0",
     "base": "SCENE_LOC_01",
     "shot": "E01_SH01_S02",
-    "timecode": "2-5",
+    "timecode": "5-10",
     "characters": [{"id": "char_aze", "name": "阿泽", "inFrame": True}],
     "camera": {"position": [0, 1, -5], "target": [0, 1, 0], "fov": 60},
 }
@@ -176,6 +207,56 @@ class StageGateTests(unittest.TestCase):
 
     def tearDown(self):
         self._tmp.cleanup()
+
+    def continuity_ready(self):
+        build(self.workdir, input_extra="站位层：豁免（理由：全片单人独白，无同框）",
+              shards={"E01": SHARD})
+        (self.workdir / "精简制作包.md").write_text(
+            compact_fixtures.make_package(), encoding="utf-8")
+        return self.workdir / "内部" / "04c-衔接事实.json"
+
+    def test_stage3_requires_frozen_continuity_facts(self):
+        path = self.continuity_ready()
+        path.unlink()
+        errors, _ = gates.stage3(self.workdir, NAMES)
+        self.assertTrue(any("缺衔接事实文件" in e for e in errors), errors)
+
+    def test_stage3_blocks_todo_continuity_state(self):
+        path = self.continuity_ready()
+        facts = json.loads(path.read_text(encoding="utf-8"))
+        facts["segments"][0]["entry"]["light"] = "TODO"
+        path.write_text(json.dumps(facts, ensure_ascii=False), encoding="utf-8")
+        errors, _ = gates.stage3(self.workdir, NAMES)
+        self.assertTrue(any("entry.light" in e and "TODO" in e for e in errors), errors)
+
+    def test_stage3_blocks_stale_continuity_board_version(self):
+        self.continuity_ready()
+        board = self.workdir / "内部" / "04-片段规划与逐镜表.md"
+        board.write_text(board.read_text(encoding="utf-8") + "\n修订：光位描述更新。\n", encoding="utf-8")
+        errors, _ = gates.stage3(self.workdir, NAMES)
+        self.assertTrue(any("逐镜表版本已过期" in e for e in errors), errors)
+
+    def test_stage3_blocks_old_facts_schema(self):
+        path = self.continuity_ready()
+        facts = json.loads(path.read_text(encoding="utf-8"))
+        facts["schema"] = "continuity-facts/1"
+        path.write_text(json.dumps(facts, ensure_ascii=False), encoding="utf-8")
+        errors, _ = gates.stage3(self.workdir, NAMES)
+        self.assertTrue(any("schema" in e for e in errors), errors)
+
+    def test_stage4_blocks_prompt_facts_timing_mismatch(self):
+        self.continuity_ready()
+        package = self.workdir / "精简制作包.md"
+        package.write_text(compact_fixtures.make_package(
+            rows=compact_fixtures.GOOD_ROWS.replace("0-5秒", "0-4秒").replace("5-10秒", "4-10秒")),
+            encoding="utf-8")
+        errors, _ = gates.stage4(self.workdir, NAMES)
+        self.assertTrue(any("时间轴与衔接事实不一致" in e for e in errors), errors)
+
+    def test_stage4_reads_standard_importer_episode_and_short_shot_ids(self):
+        self.continuity_ready()
+        errors, _ = gates.stage4(self.workdir, NAMES)
+        self.assertEqual(errors, [], errors)
 
     # ---------- 该拦：站位层（PROC-05） ----------
     def test_missing_stage2_base_is_error(self):
@@ -198,6 +279,71 @@ class StageGateTests(unittest.TestCase):
         errors, _ = gates.stage3(self.workdir, NAMES)
         self.assertTrue(any("站位继承表" in e for e in errors), errors)
 
+    def test_stage3_rejects_overlay_cast_conflict_with_frozen_storyboard(self):
+        """镜级 JSON 不能把分镜明确列为画外的人标成入画。"""
+        board = (
+            "## E01_SH01｜C01｜对话｜30秒\n\n"
+            "|片段|镜|画内人物|动作与信息|\n|---|---|---|---|\n"
+            "|C01|S01|塔纳画外；娜琳看向画外|反应镜头|\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            overlay = Path(tmp) / "E01_SH01_S01.json"
+            overlay.write_text(json.dumps({
+                "shot": "E01_SH01_S01",
+                "characters": [
+                    {"id": "char_thana", "name": "塔纳", "inFrame": True},
+                    {"id": "char_nalin", "name": "娜琳", "inFrame": True},
+                ],
+            }, ensure_ascii=False), encoding="utf-8")
+            errors = gates._space_cast_conflicts(board, [overlay])
+        self.assertEqual(len(errors), 1, errors)
+        self.assertIn("塔纳", errors[0])
+
+    def test_stage3_rejects_hidden_character_when_storyboard_says_partial_visible(self):
+        """分镜明确写局部入画时，overlay 不得将角色整体标成画外。"""
+        board = (
+            "## E01_SH01｜C01｜对话｜30秒\n\n"
+            "|片段|镜|画内人物|动作与信息|\n|---|---|---|---|\n"
+            "|C01|S01|娜琳局部|手部入画|\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            overlay = Path(tmp) / "E01_SH01_S01.json"
+            overlay.write_text(json.dumps({
+                "shot": "E01_SH01_S01",
+                "characters": [{"id": "char_nalin", "name": "娜琳", "inFrame": False}],
+            }, ensure_ascii=False), encoding="utf-8")
+            errors = gates._space_cast_conflicts(board, [overlay])
+        self.assertEqual(len(errors), 1, errors)
+        self.assertIn("娜琳", errors[0])
+
+    def test_stage3_rejects_incomplete_planned_segment_coverage(self):
+        """阶段1计划两段、阶段3只有一段时必须阻断，不能把部分分镜当全量通过。"""
+        build(self.workdir, bases={"SCENE_LOC_01": BASE_DOC}, inheritance=True,
+              shards={"E01": SHARD.replace("# E01", "### E01_SH01｜C01")})
+        plan = {
+            "segments": [
+                {"id": "C01", "episode": 1},
+                {"id": "C02", "episode": 1},
+            ]
+        }
+        (self.workdir / "内部" / "02a-结构化拍摄剧本.json").write_text(
+            json.dumps(plan, ensure_ascii=False), encoding="utf-8")
+        errors, _ = gates.stage3(self.workdir, NAMES)
+        self.assertTrue(any("片段覆盖与阶段1计划不一致" in e and "E01_SH02" in e for e in errors), errors)
+
+    def test_stage3_rejects_duplicate_and_unplanned_segment_ids(self):
+        """阶段3出现重复或计划外分段 ID 也必须阻断。"""
+        one = SHARD.replace("# E01", "### E01_SH01｜C01")
+        two = SHARD.replace("# E01", "### E02_SH01｜C02")
+        build(self.workdir, bases={"SCENE_LOC_01": BASE_DOC}, inheritance=True,
+              shards={"E01": one + "\n" + one + "\n" + two})
+        plan = {"segments": [{"id": "C01", "episode": 1}]}
+        (self.workdir / "内部" / "02a-结构化拍摄剧本.json").write_text(
+            json.dumps(plan, ensure_ascii=False), encoding="utf-8")
+        errors, _ = gates.stage3(self.workdir, NAMES)
+        self.assertTrue(any("重复 E01_SH01" in e for e in errors), errors)
+        self.assertTrue(any("计划外 E02_SH01" in e for e in errors), errors)
+
     def test_stage4_missing_space_dir_is_error(self):
         """交付包命中风险闸门、但站位目录不存在 → 判错，不静默通过。"""
         build(self.workdir)
@@ -205,6 +351,22 @@ class StageGateTests(unittest.TestCase):
             "# 包\n\n2-5秒，硬切，阿泽看向苏晚。\n", encoding="utf-8")
         errors, _ = gates.stage4(self.workdir, NAMES)
         self.assertTrue(any("站位层" in e for e in errors), errors)
+
+    def test_stage4_rejects_missing_invalid_or_duplicate_model_track(self):
+        """阶段4必须从输入单读取唯一有效轨，不能在歧义时猜 Seedance。"""
+        build(self.workdir)
+        (self.workdir / "精简制作包.md").write_text(
+            compact_fixtures.make_package(), encoding="utf-8")
+        brief = self.workdir / "内部" / "00-项目输入单.md"
+        for registration in (
+            "# 项目输入单\n",
+            "# 项目输入单\n\n| 生成轨 | Wan3.0 |\n",
+            "# 项目输入单\n\n| 生成轨 | wan30 |\n| 生成轨 | seedance25 |\n",
+        ):
+            with self.subTest(registration=registration):
+                brief.write_text(registration, encoding="utf-8")
+                errors, _ = gates.stage4(self.workdir, NAMES)
+                self.assertTrue(any("唯一生成轨" in e for e in errors), errors)
 
     def test_base_missing_required_field_is_error(self):
         broken = {k: v for k, v in BASE_DOC.items() if k != "camera"}
@@ -235,6 +397,13 @@ class StageGateTests(unittest.TestCase):
         errors, _ = gates.stage2(self.workdir, NAMES)
         self.assertTrue(any("03b-资产评审" in e for e in errors), errors)
 
+    def test_stage2_review_without_zero_open_defects_fails(self):
+        build(self.workdir, bases={"SCENE_LOC_01": BASE_DOC})
+        review = self.workdir / "内部" / "03b-资产评审.md"
+        review.write_text(REVIEW_OK.replace("- 未关闭阻断/重要缺陷：0\n", ""), encoding="utf-8")
+        errors, _ = gates.stage2(self.workdir, NAMES)
+        self.assertTrue(any("未关闭阻断/重要缺陷" in error for error in errors), errors)
+
     def test_stage2_review_with_layering_section_passes(self):
         """评审含「分层与去重」段 → 不再提醒（R31 的正常路径）。"""
         build(self.workdir, bases={"SCENE_LOC_01": BASE_DOC})
@@ -247,7 +416,8 @@ class StageGateTests(unittest.TestCase):
         build(self.workdir, bases={"SCENE_LOC_01": BASE_DOC})
         review = self.workdir / "内部" / "03b-资产评审.md"
         text = review.read_text(encoding="utf-8")
-        text = text.split("## 分层与去重")[0]
+        text = text.replace("## 分层与去重", "## 资产复核").replace(
+            "- 资产图写全外观、空间与形制；视频正文只写机位、动作与状态变化；同一事实没有在两个资产或正文里重复。\n", "")
         review.write_text(text, encoding="utf-8")
         errors, warnings = gates.stage2(self.workdir, NAMES)
         self.assertEqual(errors, [])
@@ -275,7 +445,7 @@ class StageGateTests(unittest.TestCase):
     def test_missing_shot_table_is_error(self):
         """视感自查退化成散文、没有可校验的逐镜表 → 判错。"""
         shard = SHARD.split("### 上下文衔接自查")[0].replace(
-            "| 镜 | 景别 | 焦段 | 机位 | 运镜 | 景深 | 固定 |", "| 说明 |")
+            "| 镜 | 起止 | 景别 | 焦段 | 机位 | 运镜 | 景深 | 固定 |", "| 说明 |")
         build(self.workdir, bases={"SCENE_LOC_01": BASE_DOC},
               overlays={"E01_SH01_S02": OVERLAY_DOC}, inheritance=True,
               shards={"E01": shard + "\n### 上下文衔接自查\n\n| 镜对 | 站位 | 道具 | 情绪 |\n|---|---|---|---|\n| S01↔S02 | 原地 | 无 | 沉默 |\n"
@@ -317,11 +487,17 @@ class StageGateTests(unittest.TestCase):
               overlays={"E01_SH01_S02": OVERLAY_DOC}, inheritance=True,
               shards={"E01": SHARD + "\n2-5秒，硬切，阿泽与苏晚并肩。\n"})
         (self.workdir / "精简制作包.md").write_text(
-            "# 包\n\n2-5秒，硬切，阿泽看向苏晚。\n", encoding="utf-8")
+            compact_fixtures.make_package(), encoding="utf-8")
         for stage, fn in (("2", gates.stage2), ("3", gates.stage3),
-                          ("3.5", gates.stage35), ("4", gates.stage4)):
+                          ("3.5", gates.stage35)):
             errors, _ = fn(self.workdir, NAMES)
             self.assertEqual(errors, [], f"阶段{stage} 误报：{errors}")
+        overlay_path = self.workdir / "内部" / "04b-站位图" / "E01_SH01_S02.json"
+        overlay = json.loads(overlay_path.read_text(encoding="utf-8"))
+        overlay["timecode"] = "5-10"
+        overlay_path.write_text(json.dumps(overlay, ensure_ascii=False), encoding="utf-8")
+        errors, _ = gates.stage4(self.workdir, NAMES)
+        self.assertEqual(errors, [], f"阶段4 误报：{errors}")
 
     def test_exemption_in_brief_passes(self):
         """输入单登记「站位层：豁免」后放行（留痕式跳过，而非默认跳过）。"""
@@ -372,7 +548,8 @@ class StageGateTests(unittest.TestCase):
         """全程单人/空镜的项目不触发风险闸门，不要求站位层。"""
         build(self.workdir, script="# 剧本\n\n### 场景 LOC_01｜荒野\n阿泽：走。\n",
               shards={"E01": SHARD + "\n0-5秒，空镜，风穿过碎石。\n"})
-        (self.workdir / "精简制作包.md").write_text("# 包\n\n0-5秒，空镜，风穿过碎石。\n", encoding="utf-8")
+        (self.workdir / "精简制作包.md").write_text(
+            compact_fixtures.make_package(), encoding="utf-8")
         for fn in (gates.stage2, gates.stage3, gates.stage35, gates.stage4):
             errors, _ = fn(self.workdir, NAMES)
             self.assertEqual(errors, [], errors)
@@ -386,10 +563,6 @@ class StageGateTests(unittest.TestCase):
         warnings: list[str] = []
         gates._character_field_warnings(text, gates._policy(), warnings)
         self.assertTrue(any("CHAR_01" in w and "缺美工字段" in w for w in warnings), warnings)
-
-
-if __name__ == "__main__":
-    unittest.main(verbosity=2)
 
 
 class ScenePlateTableTest(unittest.TestCase):

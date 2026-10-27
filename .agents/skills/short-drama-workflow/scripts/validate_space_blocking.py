@@ -87,6 +87,17 @@ def _inside_box(position, box, pad=0.0):
             and abs(position[2] - cz) <= hz + pad)
 
 
+def _surface_top(prop):
+    """Return the top elevation for an explicitly walkable box surface."""
+    if prop.get("walkableSurface") is not True or prop.get("kind") != "box":
+        return None
+    position = _vec3(prop.get("position"))
+    size = _vec3(prop.get("size"))
+    if position is None or size is None:
+        return None
+    return position[1] + abs(size[1]) / 2.0
+
+
 def _camera_in_prop(cam_pos, prop, box):
     """True when the camera sits inside the prop volume (footprint plus height)."""
     cx, cz, hx, hz, height = box
@@ -155,6 +166,8 @@ def _exempt_pair(char, prop):
     if prop.get("seatFor") == cid:
         return True
     if prop.get("heldBy") == cid:
+        return True
+    if char.get("supportSurfaceId") == prop.get("id"):
         return True
     ignored = prop.get("ignoredBy")
     if isinstance(ignored, list) and cid in ignored:
@@ -235,10 +248,27 @@ def check_geometry(doc, label, base, errors, warnings, min_gap):
             except (TypeError, ValueError):
                 errors.append(f"{label}: 角色 {cid} 的 facing 不是数值")
 
-        # 2. ground contact
-        if pose in STANDING and abs(position[1]) > 0.02:
-            errors.append(
-                f"{label}: 角色 {cid} posePreset={pose} 但 y={position[1]:.2f} 未接地（地面为 y=0）")
+        # 2. ground contact: default floor is y=0; elevated walkable fixtures
+        # must be named explicitly and match both the box top and footprint.
+        if pose in STANDING:
+            support_id = char.get("supportSurfaceId")
+            if support_id is None:
+                if abs(position[1]) > 0.02:
+                    errors.append(
+                        f"{label}: 角色 {cid} posePreset={pose} 但 y={position[1]:.2f} 未接地（默认地面为 y=0；抬高表面需声明 supportSurfaceId）")
+            else:
+                support = next((p for p in props if p.get("id") == support_id), None)
+                support_box = _prop_box(support) if support else None
+                top = _surface_top(support) if support else None
+                if support is None or support_box is None or top is None:
+                    errors.append(
+                        f"{label}: 角色 {cid} 的 supportSurfaceId「{support_id}」不是有效 walkableSurface 箱体")
+                elif not _inside_box(position, support_box, pad=0.02):
+                    errors.append(
+                        f"{label}: 角色 {cid} 的 position 不在支撑面 {support_id} 的水平范围内")
+                elif abs(position[1] - top) > 0.02:
+                    errors.append(
+                        f"{label}: 角色 {cid} 的 y={position[1]:.2f} 未落在支撑面 {support_id} 顶面 y={top:.2f}")
         elif pose in LYING and position[1] > 0.35:
             errors.append(f"{label}: 角色 {cid} posePreset=lie 但 y={position[1]:.2f} 离地过高")
         elif pose in CROUCHED and position[1] > 0.75:
@@ -254,6 +284,9 @@ def check_geometry(doc, label, base, errors, warnings, min_gap):
                 continue
             if prop.get("heldBy"):
                 # 手持道具随持有人移动，不是固定障碍；只有持有人本身才是障碍
+                continue
+            if _is_overhead(prop):
+                # 头顶灯具/顶棚只与人物高度相交时才构成碰撞；水平投影重叠不算脚下净距冲突。
                 continue
             if pose == "sit" and prop.get("kind") in SEAT_KINDS:
                 continue

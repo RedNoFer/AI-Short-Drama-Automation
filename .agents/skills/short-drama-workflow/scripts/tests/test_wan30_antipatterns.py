@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -67,6 +69,18 @@ class Wan30AntiPatternTests(unittest.TestCase):
         self.assertEqual(result["camera_missing_prefix"], 0)
         self.assertEqual(result["no_gaze_segments"], 0)
 
+    def test_public_section_share_does_not_trigger_length_quota(self):
+        """公共层比例不能作为阻断依据；重复的语义质量仍由评审判断。"""
+        result = self._audit(CLEAN_ROWS, public="统一冷灰自然光。" * 200)
+        self.assertEqual(result["errors"], 0, result["issues"])
+        self.assertEqual(result["warnings"], 0, result["issues"])
+
+    def test_reaction_shot_does_not_require_extra_action_words(self):
+        result = self._audit(
+            "0-3秒，镜头：近景，阿泽侧前方平视，向前短推。阿泽眼神骤然失去焦点，唇线绷紧。全员不看镜头。")
+        self.assertEqual(result["errors"], 0, result["issues"])
+        self.assertEqual(result["warnings"], 0, result["issues"])
+
     def test_blocking_term_is_error(self):
         result = self._audit(CLEAN_ROWS.replace("三个人错位站在车头两侧", "五人并肩站在车头前", 1))
         self.assertGreater(result["errors"], 0)
@@ -120,9 +134,128 @@ class Wan30AntiPatternTests(unittest.TestCase):
         )
         self.assertTrue(any(i["kind"] == "dialogue_shot_too_long" for i in result["issues"]))
 
+    def test_declared_dialogue_window_uses_speech_duration(self):
+        result = self._audit(
+            '0-8秒，镜头：中景。画面：阿泽边走边说“你好”，动作2.6秒、对白5.4秒。全员不看镜头。'
+        )
+        self.assertFalse(
+            any(i["kind"] == "dialogue_shot_too_long" for i in result["issues"]),
+            result["issues"],
+        )
+
     def test_warm_light_word(self):
         result = self._audit(CLEAN_ROWS, public="清晨低角度金色逆光，真人实拍。")
         self.assertTrue(any(i["kind"] == "warm_light" for i in result["issues"]))
+
+    def _risk_record(self, result: dict) -> dict:
+        return {'schema_version': 1, 'dispositions': [
+            {'issue_id': i['issue_id'], 'fingerprint': i['fingerprint'],
+             'status': 'not_applicable', 'reason': '本场暖光来自已冻结的舞台灯',
+             'evidence': '阶段2场景LOC_01光源表：舞台既有暖灯', 'reviewer': '独立评审员'}
+            for i in result['issues'] if i['level'] == 'warning']}
+
+    def test_warning_is_pending_without_review_record(self):
+        result = self._audit(CLEAN_ROWS, public='既有舞台灯产生暖金光。全员不看镜头。')
+        self.assertEqual(result['errors'], 0)
+        self.assertGreater(result['unresolved_warnings'], 0)
+        self.assertEqual(result['accepted_warnings'], 0)
+        self.assertTrue(all(i.get('issue_id') and i.get('fingerprint') for i in result['issues']))
+
+    def test_strict_requires_current_individual_disposition(self):
+        with tempfile.TemporaryDirectory() as d:
+            package = Path(d) / 'package.md'
+            record = Path(d) / 'review.json'
+            package.write_text(make_pkg(CLEAN_ROWS, '舞台既有暖金灯光。全员不看镜头。'), encoding='utf-8')
+            result = audit_mod.audit(package, POLICY)
+            command = [sys.executable, str(ROOT / 'scripts/audit_wan30_antipatterns.py'),
+                       str(package), '--strict', '--json']
+            pending = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(pending.returncode, 1, pending.stdout + pending.stderr)
+            record.write_text(json.dumps(self._risk_record(result), ensure_ascii=False), encoding='utf-8')
+            reviewed = subprocess.run(command + ['--review-record', str(record)], capture_output=True, text=True)
+            self.assertEqual(reviewed.returncode, 0, reviewed.stdout + reviewed.stderr)
+            review_result = json.loads(reviewed.stdout)
+            self.assertEqual(review_result['unresolved_warnings'], 0)
+            self.assertGreater(review_result['warnings'], 0)  # Original hit stays visible.
+            self.assertIn('evidence', review_result['issues'][0]['disposition'])
+
+    def test_disposition_stale_only_when_own_segment_or_rules_change(self):
+        with tempfile.TemporaryDirectory() as d:
+            package, record = Path(d) / 'package.md', Path(d) / 'review.json'
+            original = make_pkg(CLEAN_ROWS, '舞台既有暖金灯光。全员不看镜头。')
+            package.write_text(original, encoding='utf-8')
+            record.write_text(json.dumps(self._risk_record(audit_mod.audit(package, POLICY))), encoding='utf-8')
+            second = make_pkg(CLEAN_ROWS).replace('SH01', 'SH02')
+            package.write_text(original + second, encoding='utf-8')
+            unchanged = audit_mod.audit(package, POLICY, record)
+            self.assertEqual(unchanged['errors'], 0, unchanged)
+            self.assertEqual(unchanged['unresolved_warnings'], 0, unchanged)
+            package.write_text(original.replace('阿泽走远', '阿泽慢慢走远'), encoding='utf-8')
+            stale = audit_mod.audit(package, POLICY, record)
+            self.assertGreater(stale['review_record_errors'], 0)
+            self.assertGreater(stale['unresolved_warnings'], 0)
+
+    def test_review_record_fields_and_duplicates_fail_closed(self):
+        with tempfile.TemporaryDirectory() as d:
+            package, record = Path(d) / 'package.md', Path(d) / 'review.json'
+            package.write_text(make_pkg(CLEAN_ROWS, '舞台既有暖金光。'), encoding='utf-8')
+            valid = self._risk_record(audit_mod.audit(package, POLICY))
+            for field in ('reason', 'evidence', 'reviewer', 'fingerprint', 'status', 'issue_id'):
+                bad = json.loads(json.dumps(valid))
+                bad['dispositions'][0][field] = ''
+                record.write_text(json.dumps(bad), encoding='utf-8')
+                result = audit_mod.audit(package, POLICY, record)
+                self.assertGreater(result['errors'], 0, field)
+            valid['dispositions'].append(dict(valid['dispositions'][0]))
+            record.write_text(json.dumps(valid), encoding='utf-8')
+            self.assertGreater(audit_mod.audit(package, POLICY, record)['errors'], 0)
+
+    def test_hard_error_cannot_be_waived(self):
+        with tempfile.TemporaryDirectory() as d:
+            package, record = Path(d) / 'package.md', Path(d) / 'review.json'
+            package.write_text(make_pkg(CLEAN_ROWS.replace('三个人错位站在车头两侧',
+                                                        '五人并肩站在车头前')), encoding='utf-8')
+            result = audit_mod.audit(package, POLICY)
+            hard = next(i for i in result['issues'] if i['level'] == 'error')
+            disposition = self._risk_record(result)
+            disposition['dispositions'].append({
+                'issue_id': hard['issue_id'], 'fingerprint': hard['fingerprint'],
+                'status': 'resolved', 'reason': '不能用此记录解除硬错误',
+                'evidence': '测试', 'reviewer': '测试评审'})
+            record.write_text(json.dumps(disposition), encoding='utf-8')
+            reviewed = audit_mod.audit(package, POLICY, record)
+            self.assertGreater(reviewed['errors'], 0)
+            self.assertGreater(reviewed['review_record_errors'], 0)
+
+    def test_malformed_or_unknown_record_fails_closed(self):
+        with tempfile.TemporaryDirectory() as d:
+            package, record = Path(d) / 'package.md', Path(d) / 'review.json'
+            package.write_text(make_pkg(CLEAN_ROWS), encoding='utf-8')
+            for raw in ('{broken', '{}', '{"schema_version":true,"dispositions":[]}'):
+                record.write_text(raw, encoding='utf-8')
+                self.assertGreater(audit_mod.audit(package, POLICY, record)['errors'], 0)
+            self.assertGreater(audit_mod.audit(package, POLICY, Path(d) / 'missing.json')['errors'], 0)
+
+    def test_negated_gold_filter_is_not_warm_light(self):
+        result = self._audit(CLEAN_ROWS, public="低饱和自然光，不使用金色滤镜，真人实拍。")
+        self.assertFalse(
+            any(i["kind"] == "warm_light" for i in result["issues"]),
+            result["issues"],
+        )
+
+    def test_gold_filter_excluded_by_lighting_clause_is_not_warm_light(self):
+        result = self._audit(CLEAN_ROWS, public="不添加新灯位或金色滤镜，保持自然光。")
+        self.assertFalse(
+            any(i["kind"] == "warm_light" for i in result["issues"]),
+            result["issues"],
+        )
+
+    def test_gold_jewelry_is_not_warm_light(self):
+        result = self._audit(CLEAN_ROWS, public="金色耳饰仅在受光处保留一小片暖高光。")
+        self.assertFalse(
+            any(i["kind"] == "warm_light" for i in result["issues"]),
+            result["issues"],
+        )
 
     def test_legible_text_closeup(self):
         result = self._audit(

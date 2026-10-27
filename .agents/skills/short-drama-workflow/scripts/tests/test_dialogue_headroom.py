@@ -4,8 +4,8 @@
 运行：python3 scripts/tests/test_dialogue_headroom.py
 
 背景：S02 第88行原文是「按念白托底（中文约每秒5字），再往上留2-3秒给动作和呼吸」。
-「+2–3 秒」在 30 秒片段×6–11 镜的结构里不可执行，本流水线改用占比口径：
-台词占镜内时长超过 dialogue_share_warn（默认 75%）即提示镜内没有动作余量。
+「+2–3 秒」不作为逐镜串行预算。占比只提醒对白密度，不证明动作不能并行。
+非汉语实际台词要求原语发声时长与停连登记，不套汉字速率。
 
 覆盖：短台词长镜不提醒；长台词短镜提醒；画外旁白等豁免；同片段多镜聚合成一条；
 超 5.0 字/秒仍判错；policy 保留出处注记。
@@ -172,6 +172,78 @@ class DialogueHeadroomTest(unittest.TestCase):
         source = PACKAGE.format(lock=LOCK, rows="\n".join(ROWS_THIN))
         result = validator.validate(source, relaxed, model="seedance25")
         self.assertEqual(headroom(result["warnings"]), [])
+
+    def native_errors(self, speech, instruction="", translation="", span=4):
+        rows = ROWS_CLEAN.copy()
+        rows[0] = (f'0-{span}秒，他作口型对白、口型同步，说：{speech}'
+                   f'{translation}；{instruction}')
+        errors, _ = run(rows)
+        return [e for e in errors if "原语" in e or "非汉语" in e or "语速" in e]
+
+    def test_thai_missing_timing_is_error(self):
+        self.assertTrue(self.native_errors('"แม่ฉันเหรอ"'))
+
+    def test_thai_estimate_plus_pause_fits(self):
+        self.assertEqual(self.native_errors('"แม่ฉันเหรอ"',
+                         "原语朗读估时：1.2秒；停连：0.8秒"), [])
+
+    def test_native_exact_window_is_allowed(self):
+        self.assertEqual(self.native_errors('"แม่ฉันเหรอ"',
+                         "原语朗读估时：3.5秒；停连：0.5秒"), [])
+
+    def test_native_total_over_window_fails(self):
+        errors = self.native_errors('"แม่ฉันเหรอ"', "原语朗读估时：3.6秒；停连：0.5秒")
+        self.assertTrue(any("超过镜内4秒" in e for e in errors), errors)
+
+    def test_translation_is_not_spoken_chinese(self):
+        self.assertEqual(self.native_errors('"แม่ฉันเหรอ"',
+                         "原语朗读估时：1.2秒；停连：0.8秒",
+                         '（中文翻译：“我的妈妈吗' + "啊" * 60 + '？”）'), [])
+
+    def test_curly_quotes_and_other_languages_require_timing(self):
+        for speech in ('“แม่ฉันเหรอ”', '「Where am I?」', '"どこですか"'):
+            with self.subTest(speech=speech):
+                self.assertTrue(self.native_errors(speech))
+
+    def test_many_thai_lines_use_one_combined_record(self):
+        self.assertEqual(self.native_errors('"แม่ฉันเหรอ"；接着说："พูดให้ชัดสิ!"',
+                         "原语朗读估时：2.5秒；停连：0.5秒"), [])
+
+    def test_duplicate_timing_records_fail(self):
+        self.assertTrue(self.native_errors('"แม่ฉันเหรอ"',
+                        "原语朗读估时：1秒；停连：0秒；原语朗读估时：1秒；停连：0秒"))
+
+    def test_pause_and_positive_speech_required(self):
+        for instruction in ("原语朗读估时：1秒", "原语朗读估时：0秒；停连：1秒",
+                            "原语朗读估时：1秒；停连：-1秒"):
+            with self.subTest(instruction=instruction):
+                self.assertTrue(self.native_errors('"แม่ฉันเหรอ"', instruction))
+
+    def test_timing_quoted_as_dialogue_is_not_instruction(self):
+        self.assertTrue(self.native_errors('"แม่ฉันเหรอ；原语朗读估时：1秒；停连：0秒"'))
+
+    def test_measured_audio_uses_same_fit_check(self):
+        self.assertEqual(self.native_errors('"แม่ฉันเหรอ"',
+                         "原语音频实测：1.2秒；停连：0.8秒"), [])
+
+    def test_english_native_timing_forms(self):
+        for instruction in ("Native speech estimate: 1.2s; pauses: 0.8s",
+                            "Native audio measured: 1.2s; pauses: 0.8s"):
+            with self.subTest(instruction=instruction):
+                self.assertEqual(self.native_errors('"แม่ฉันเหรอ"', instruction), [])
+
+    def test_mixed_language_duplicate_timing_records_fail(self):
+        self.assertTrue(self.native_errors('"แม่ฉันเหรอ"',
+            "原语朗读估时：1秒；停连：0秒；Native speech estimate: 1s; pauses: 0s"))
+
+    def test_english_timing_obeys_same_window_limit(self):
+        errors = self.native_errors('"แม่ฉันเหรอ"',
+                                   "Native speech estimate: 3.6s; pauses: 0.5s")
+        self.assertTrue(any("超过镜内4秒" in e for e in errors), errors)
+
+    def test_curly_chinese_still_checked(self):
+        errors = self.native_errors('“' + "一" * 30 + '”')
+        self.assertTrue(any("超 5.0" in e for e in errors), errors)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""阶段出口门：每个阶段的落盘物必须齐备且自洽，缺一项即判错。
+"""阶段出口门：每个阶段的落盘物必须齐备且自洽，并保存可复核的版本收据。
 
 用法：
     python3 validate_stage_artifacts.py <作品目录> --stage 2
@@ -13,7 +13,7 @@
 门会因为它缺席而失败**：
 
   · 阶段 2/3 的落盘清单（站位基底／镜级增量／继承表）没有任何校验器检查；
-  · `validate_compact_package --space-dir` 是**可选参数**，目录找不到就"跳过"；
+  · `validate_compact_package --space-dir` 曾是可选参数并可能跳过；当前命中风险闸门时会 fail closed，缺站位增量且无输入单豁免即报错；
   · 所有机检都只跑在最终交付包上，看不见上游阶段。
 
 结果是 4 轮返工（约 50 路 agent），其中 3 轮返工的根因都是"阶段 2/3 该固化的东西
@@ -29,6 +29,7 @@
   · 每个角色必须在角色美工账里各有一行（缺行判错）；
   · 持物链必须有箭头链或表格行；
   · 阶段 3 的「视感统计：」声明值必须与逐镜表实算值一致（crosscheck_storyboard）；
+  · 阶段 3 的实际分镜片段 ID 必须完整覆盖 02a 计划，缺段/重复/计划外均判错；
   · 阶段 2 必须有隔离评稿人的 `内部/03b-资产评审.md`；
   · 阶段 3.5 打斗路由 A/B/C 判定必须有表，A 级须带拍点、一镜到底与原文证据。
 
@@ -47,8 +48,17 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
+
+SCRIPTS = Path(__file__).resolve().parent
+sys.path.insert(0, str(SCRIPTS))
+import workflow_common as wc  # noqa: E402
+import batch_ledger as ledger  # noqa: E402
+import validate_workflow_manifest as workflow_manifest  # noqa: E402
+import continuity_facts as continuity  # noqa: E402
 
 CHARS = ("阿泽", "苏晚", "老杨", "许棠", "小林", "黑衣人")
 # 通用角色名（供其他项目用）：取资产区「角色」资产名的主名
@@ -334,6 +344,9 @@ def stage2(workdir: Path, names: list) -> tuple[list, list]:
         | {found[k] for k in ("资产与空间设计",) if k in found}
     )
     asset_text = "\n".join(f.read_text(encoding="utf-8") for f in asset_files)
+    for match in re.finditer(r"#### 图片提示词\s*\n\s*```text\n(.*?)\n```", asset_text, re.S):
+        if re.search(r"资产来源[：:]|原图文件[：:]|(?:内部|创作输出)[/\\]|(?:不另|不再)(?:行)?生成|本剧\s*E\d", match.group(1)):
+            errors.append("阶段2 图片提示词混入来源说明、本地路径或项目操作指令；必须改为供应商可执行绘图正文")
     exempt_items = stage_exemptions(workdir)
 
     def _content(label: str, aliases: tuple, **kw) -> None:
@@ -371,6 +384,14 @@ def stage2(workdir: Path, names: list) -> tuple[list, list]:
             errors.append(f"阶段2 独立评审记录「{review.name}」内容过短（<60 字符），视为未评审")
         else:
             review_text = review.read_text(encoding="utf-8")
+            if not re.search(
+                    r"^\s*(?:[-*]\s*)?(?:(?:总体|评审)\s*)?结论\s*[：:]\s*通过(?:\s*[，,。；;]|$)",
+                    review_text, re.M):
+                errors.append(f"阶段2 独立评审记录「{review.name}」没有明确的通过结论")
+            if not re.search(r"未关闭阻断/重要缺陷\s*[：:]\s*0\b", review_text):
+                errors.append(f"阶段2 独立评审记录「{review.name}」没有明确写「未关闭阻断/重要缺陷：0」")
+            if not re.search(r"(评稿人|评审人|子任务|模型)", review_text):
+                errors.append(f"阶段2 独立评审记录「{review.name}」没有标明独立评审人")
             layering = _find_section(review_text, ("分层与去重", "提示词分层"))
             if layering is None:
                 warnings.append(
@@ -412,6 +433,84 @@ def stage2(workdir: Path, names: list) -> tuple[list, list]:
     return errors, warnings
 
 
+def _space_cast_conflicts(board_text: str, overlay_paths: list[Path]) -> list[str]:
+    """Catch explicit in-frame/off-screen conflicts between the frozen shot table and W18 overlays."""
+    segment_to_c = {
+        match.group(1): f"C{int(match.group(2)):02d}"
+        for match in re.finditer(r"(?m)^## (E\d+_SH\d+)｜C(\d+)｜", board_text)
+    }
+    c_to_segment = {c: segment for segment, c in segment_to_c.items()}
+    cast_by_shot: dict[tuple[str, str], str] = {}
+    active = False
+    cast_index = None
+    for line in board_text.splitlines():
+        if line.startswith("|") and ("画内人物" in line or "画面人物" in line):
+            headers = [cell.strip() for cell in line.strip("|").split("|")]
+            cast_index = next((i for i, cell in enumerate(headers)
+                               if cell in {"画内人物", "画面人物"}), None)
+            active = cast_index is not None
+            continue
+        if active and line.startswith("|---"):
+            continue
+        if active and line.startswith("|"):
+            cells = [cell.strip() for cell in line.strip("|").split("|")]
+            if cast_index is None or len(cells) <= cast_index or len(cells) < 2:
+                continue
+            first, shot = cells[0], cells[1]
+            if re.fullmatch(r"C\d+", first) and re.fullmatch(r"S\d+", shot):
+                segment = c_to_segment.get(first)
+                shot_id = shot
+            elif re.fullmatch(r"E\d+_SH\d+", first) and re.fullmatch(r"\d+", shot):
+                segment = first
+                shot_id = f"S{int(shot):02d}"
+            else:
+                continue
+            if segment:
+                cast_by_shot[(segment, shot_id)] = cells[cast_index]
+        else:
+            active = False
+            cast_index = None
+
+    errors: list[str] = []
+    for path in overlay_paths:
+        try:
+            doc = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue  # The structural gate reports malformed/missing JSON separately.
+        shot = str(doc.get("shot") or "")
+        match = re.fullmatch(r"(E\d+_SH\d+)_S(\d+)", shot)
+        if not match:
+            continue
+        segment, number = match.groups()
+        cast = cast_by_shot.get((segment, f"S{int(number):02d}"))
+        if cast is None:
+            continue
+        groups = [item.strip() for item in re.split(r"[；;]", cast) if item.strip()]
+        for character in doc.get("characters") or []:
+            if not isinstance(character, dict):
+                continue
+            name = str(character.get("name") or "")
+            aliases = [re.split(r"[（(]", name, maxsplit=1)[0].strip()]
+            suffix = re.search(r"[（(]([^）)]+)", name)
+            if suffix:
+                aliases.append(suffix.group(1).strip())
+            group = next((item for item in groups
+                          if any(alias and alias in item for alias in aliases)), None)
+            if group is None:
+                continue
+            explicitly_offscreen = bool(re.search(
+                r"画外|不入画|不进画|未入画|不在画内|不入镜|不在镜内|镜外", group))
+            if re.search(r"看向画外|望向画外|朝画外|面向画外|视线朝画外", group):
+                explicitly_offscreen = False
+            partial_visible = "局部" in group and not explicitly_offscreen
+            in_frame = bool(character.get("inFrame"))
+            if (in_frame and explicitly_offscreen) or (not in_frame and partial_visible):
+                errors.append(
+                    f"阶段3 站位/分镜画内人物冲突：{shot}「{name}」overlay inFrame={in_frame}，"
+                    f"分镜列“{group}”")
+    return errors
+
+
 def stage3(workdir: Path, names: list) -> tuple[list, list]:
     errors: list[str] = []
     warnings: list[str] = []
@@ -429,8 +528,56 @@ def stage3(workdir: Path, names: list) -> tuple[list, list]:
         errors.append("阶段3 缺少落盘物「片段规划与逐镜表」（查找模式 04-*.md 或 分镜编译/E*.md）")
         return errors, warnings
     text = table.read_text(encoding="utf-8") if table else "\n".join(p.read_text(encoding="utf-8") for p in shards)
+    continuity_errors, continuity_warnings = continuity.check_project(workdir, text, "storyboard")
+    errors.extend(f"阶段3 {e}" for e in continuity_errors)
+    warnings.extend(f"阶段3 {w}" for w in continuity_warnings)
     table_name = table.name if table else f"分镜编译/（{len(shards)} 集）"
     exempt_items = stage_exemptions(workdir)
+
+    # 将阶段1冻结的片段清单与阶段3实际分镜标题对账，防止只交一部分分镜却被当作整阶段完成。
+    # 旧项目没有结构化 02a 时保留兼容；当前工作流项目有 02a 时，覆盖缺口是阻断项。
+    plan_path = internal / "02a-结构化拍摄剧本.json"
+    if plan_path.exists():
+        try:
+            plan = json.loads(plan_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            errors.append(f"阶段3 片段覆盖核对无法读取 02a-结构化拍摄剧本.json：{exc}")
+        else:
+            planned_segments = plan.get("segments", [])
+            episode_counters: dict[int, int] = {}
+            expected_ids: list[str] = []
+            if isinstance(planned_segments, list):
+                for segment in planned_segments:
+                    if not isinstance(segment, dict) or not isinstance(segment.get("episode"), int):
+                        continue
+                    episode = segment["episode"]
+                    episode_counters[episode] = episode_counters.get(episode, 0) + 1
+                    expected_ids.append(f"E{episode:02d}_SH{episode_counters[episode]:02d}")
+            if not expected_ids:
+                errors.append("阶段3 片段覆盖核对失败：02a-结构化拍摄剧本.json 没有可识别的 segments[].episode")
+            else:
+                try:
+                    cross_for_coverage = _load_crosscheck()
+                    actual_ids = [
+                        label for label, _ in cross_for_coverage.segment_documents(text)
+                        if re.fullmatch(r"E\d{2}_SH\d{2}", label)
+                    ]
+                except Exception as exc:  # noqa: BLE001 - 覆盖核对不能静默跳过
+                    actual_ids = []
+                    errors.append(f"阶段3 片段覆盖核对无法解析逐镜分段（{exc}）")
+                expected_set, actual_set = set(expected_ids), set(actual_ids)
+                missing_ids = [item for item in expected_ids if item not in actual_set]
+                unexpected_ids = [item for item in actual_ids if item not in expected_set]
+                duplicates = sorted({item for item in actual_ids if actual_ids.count(item) > 1})
+                if missing_ids or unexpected_ids or duplicates:
+                    details = []
+                    if missing_ids:
+                        details.append("缺少 " + "、".join(missing_ids))
+                    if unexpected_ids:
+                        details.append("计划外 " + "、".join(unexpected_ids))
+                    if duplicates:
+                        details.append("重复 " + "、".join(duplicates))
+                    errors.append("阶段3 片段覆盖与阶段1计划不一致：" + "；".join(details))
 
     def _content(label: str, aliases: tuple, **kw) -> None:
         if label in exempt_items:
@@ -475,6 +622,8 @@ def stage3(workdir: Path, names: list) -> tuple[list, list]:
             for key in ("base", "shot", "timecode", "camera", "characters"):
                 if key not in doc:
                     errors.append(f"{o.name} 缺字段 {key}")
+        if table is not None:
+            errors.extend(_space_cast_conflicts(text, overlays))
         if (risk or overlays) and not (space / "站位继承表.md").exists():
             errors.append("阶段3 缺内部/04b-站位图/站位继承表.md（由 scripts/build_blocking_table.py 生成）")
     return errors, warnings
@@ -553,14 +702,52 @@ def stage4(workdir: Path, names: list) -> tuple[list, list]:
     errors: list[str] = []
     warnings: list[str] = []
     internal = workdir / "内部"
-    pkgs = sorted(workdir.glob("精简制作包*.md"))
+    canonical = workdir / "精简制作包.md"
+    pkgs = [canonical] if canonical.is_file() else []
     if not pkgs:
-        errors.append("阶段4 找不到交付包（精简制作包*.md）")
+        errors.append("阶段4 找不到唯一规范交付包（精简制作包.md）")
         return errors, warnings
+    continuity_errors, continuity_warnings = continuity.check_project(
+        workdir, canonical.read_text(encoding="utf-8"), "prompt")
+    errors.extend(f"阶段4 {e}" for e in continuity_errors)
+    warnings.extend(f"阶段4 {w}" for w in continuity_warnings)
     brief = _read(_pick(internal, STAGE2_ARTIFACTS["项目输入单"]) or internal / "00-项目输入单.md")
     exempt = bool(EXEMPT_RE.search(brief))
     if exempt:
         warnings.append("站位层：已按输入单登记豁免")
+    branch_rows = re.findall(
+        r"^\|\s*生成轨\s*\|\s*([^|]*?)\s*\|\s*$", brief, re.M | re.I)
+    if len(branch_rows) != 1 or branch_rows[0].lower() not in {"seedance25", "wan30", "h3"}:
+        errors.append(
+            "阶段4 无法读取唯一生成轨：输入单必须且只能登记一个有效值（seedance25、wan30 或 h3）")
+        return errors, warnings
+    branch = branch_rows[0].lower()
+    tier_match = re.search(r"\b(tier[123]_[A-Za-z0-9_]+)\b", brief)
+    h3_mode = "official" if re.search(r"h3[-_ ]?segments\s*[=:：]\s*official", brief, re.I) else "app"
+    compact_validator = Path(__file__).resolve().parent / "validate_compact_package.py"
+    wan_audit = Path(__file__).resolve().parent / "audit_wan30_antipatterns.py"
+    for pkg in pkgs:
+        command = [sys.executable, str(compact_validator), str(pkg), "--model", branch]
+        if branch == "seedance25" and tier_match:
+            command.extend(["--tier", tier_match.group(1)])
+        if branch == "h3":
+            command.extend(["--h3-segments", h3_mode])
+        checked = subprocess.run(command, cwd=workdir, capture_output=True, text=True)
+        if checked.returncode:
+            detail = (checked.stdout + checked.stderr).strip()
+            errors.append(f"{pkg.name}：登记轨 {branch} 的制作包校验失败（rc={checked.returncode}）\n{detail}")
+        if branch == "wan30":
+            audit_command = [sys.executable, str(wan_audit), str(pkg), "--strict"]
+            dispositions = internal / "05a-Wan风险处置.json"
+            if dispositions.is_file():
+                audit_command.extend(["--review-record", str(dispositions)])
+            audited = subprocess.run(
+                audit_command,
+                cwd=workdir, capture_output=True, text=True)
+            if audited.returncode:
+                detail = (audited.stdout + audited.stderr).strip()
+                errors.append(f"{pkg.name}：Wan3.0反例专项审计失败（rc={audited.returncode}）\n{detail}")
+    if exempt:
         return errors, warnings
     space = internal / "04b-站位图"
     overlays = list(space.glob("E*_SH*_S*.json")) if space.is_dir() else []
@@ -591,14 +778,67 @@ def main() -> int:
     stages = ["2", "3", "3.5", "4"] if args.stage == "all" else [args.stage]
     all_errors: list[str] = []
     all_warnings: list[str] = []
+    stage_results: dict[str, dict] = {}
     for st in stages:
         fn = {"2": stage2, "3": stage3, "3.5": stage35, "4": stage4}[st]
         errs, warns = fn(workdir, names)
+        if st == "2":
+            review_errors: list[str] = []
+            workflow_manifest.check_review_stage1(workdir / "内部", True, review_errors, [])
+            errs.extend(review_errors)
+        elif st == "4":
+            review_errors = []
+            workflow_manifest.check_review_stage4(
+                workdir / "内部", workdir / "精简制作包.md", True, review_errors, [])
+            errs.extend(review_errors)
+            ledger_file = workdir / "内部" / ledger.LEDGER_NAME
+            if not ledger_file.is_file():
+                errs.append("阶段4 缺少批次台账；全覆盖评审后须登记各提示词批次通过状态")
+            else:
+                try:
+                    ledger_data = ledger.load_ledger(workdir)
+                    ledger_errors, _ = ledger.diagnose(workdir, ledger_data)
+                    errs.extend(f"阶段4 批次台账：{item}" for item in ledger_errors)
+                    prompt_batches = [entry for entry in ledger_data.get("batches", [])
+                                      if str(entry.get("stage")) == "4"]
+                    if not prompt_batches:
+                        errs.append("阶段4 批次台账中没有提示词批次记录")
+                    for entry in prompt_batches:
+                        if entry.get("state") != "通过":
+                            errs.append(f"阶段4 提示词批次 {entry.get('batch_id', '?')} 尚未通过全覆盖评审")
+                        if entry.get("gate_errors") != 0:
+                            errs.append(f"阶段4 提示词批次 {entry.get('batch_id', '?')} 缺少有效的 0 错误本地门结果")
+                except (ValueError, OSError, json.JSONDecodeError) as exc:
+                    errs.append(f"阶段4 批次台账不可读取：{exc}")
+        stage_results[st] = {"errors": errs, "warnings": warns}
         for e in errs:
             all_errors.append(f"[阶段{st}] {e}")
         for w in warns:
             all_warnings.append(f"[阶段{st}] {w}")
-    result = {"ok": not all_errors, "stage": args.stage, "errors": all_errors, "warnings": all_warnings}
+    receipt_path = workdir / "内部" / "阶段门记录.json"
+    if receipt_path.parent.is_dir():
+        try:
+            receipts = json.loads(receipt_path.read_text(encoding="utf-8")) if receipt_path.is_file() else {
+                "schema": "stage-gate-receipts/1", "stages": {}}
+            receipts.setdefault("stages", {})
+        except (json.JSONDecodeError, OSError):
+            receipts = {"schema": "stage-gate-receipts/1", "stages": {}}
+        for st, outcome in stage_results.items():
+            if st not in {"2", "3", "3.5"}:
+                continue
+            receipts["stages"][st] = {
+                "status": "通过" if not outcome["errors"] else "失败",
+                "errors": len(outcome["errors"]),
+                "warnings": len(outcome["warnings"]),
+                "checked_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                "inputs": wc.stage_gate_inputs(workdir, st),
+                "error_details": outcome["errors"],
+            }
+        receipts["schema"] = "stage-gate-receipts/1"
+        receipt_path.write_text(json.dumps(receipts, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    result = {"ok": not all_errors, "stage": args.stage, "errors": all_errors,
+              "warnings": all_warnings,
+              "receipt": str(receipt_path) if receipt_path.is_file() else None}
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=1))
     else:
@@ -607,6 +847,8 @@ def main() -> int:
         for e in all_errors:
             print(f"  错误：{e}")
         print(f"\n阶段出口门：{'通过' if not all_errors else '失败'}（{len(all_errors)} 错误 / {len(all_warnings)} 提醒）")
+        if receipt_path.is_file():
+            print(f"阶段门版本收据：{receipt_path}")
     return 0 if not all_errors else 1
 
 

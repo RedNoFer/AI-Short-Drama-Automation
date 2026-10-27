@@ -10,6 +10,8 @@ import sys
 from pathlib import Path
 
 ASSET = re.compile(r"^### (角色|场景|道具|线索) ([A-Za-z][A-Za-z0-9_-]*)｜(.+)$")
+ASSET_PROMPT_METADATA = re.compile(
+    r"资产来源[：:]|原图文件[：:]|(?:内部|创作输出)[/\\]|(?:不另|不再)(?:行)?生成|本剧\s*E\d")
 EPISODE = re.compile(r"^## 剧集 ([A-Za-z][A-Za-z0-9_-]*)｜(.+)$")
 SHOT = re.compile(r"^### 片段 ([A-Za-z][A-Za-z0-9_-]*)｜(\d+)秒｜(.+)$")
 BINDING = re.compile(r"^(角色|场景|道具|线索)：(.*)$")
@@ -77,6 +79,53 @@ DENY_REF = re.compile(r"(?:只|仅)作身份(?:与服化)?比对|不作视频参
 # 服装变体与默认装同款 = 同一套衣服登记两次，模型会当成两套来回切。
 DUP_VARIANT = re.compile(r"默认(?:固定)?装[^。；\n]{0,6}(?:同款|相同|一致)"
                          r"|与(?:角色)?默认(?:固定)?装同款")
+
+# Translations are editorial explanations, never a second spoken line.
+TRANSLATION_NOTE = re.compile(r"[（(](?:中文翻译|中文译文|中文)\s*[：:][^）)\n]*[）)]")
+QUOTED_SPEECH = re.compile(r'"([^"\n]*)"|“([^”\n]*)”|「([^」\n]*)」')
+NATIVE_TIMING = re.compile(
+    r"(?:原语(?:朗读估时|音频实测)|Native\s+(?:speech\s+estimate|audio\s+measured))"
+    r"\s*[：:]\s*(?P<speech>\d+(?:\.\d+)?)\s*(?:秒|s\b)"
+    r"\s*[；;，,]\s*(?:停连|pauses)\s*[：:]\s*(?P<pause>\d+(?:\.\d+)?)\s*(?:秒|s\b)", re.I)
+
+
+def spoken_quotes(text: str) -> list[str]:
+    """Extract actual quoted speech after removing explicitly labelled translations."""
+    text = TRANSLATION_NOTE.sub("", text)
+    return [next(part for part in match.groups() if part is not None)
+            for match in QUOTED_SPEECH.finditer(text)]
+
+
+def has_non_hanzi_speech(parts: list[str]) -> bool:
+    # No script-specific letter count can establish natural Thai/English/etc. duration.
+    return any(char.isalpha() and not "\u4e00" <= char <= "\u9fff"
+               for part in parts for char in part)
+
+
+def check_native_timing(text: str, parts: list[str], span: float,
+                        label: str, errors: list[str]) -> None:
+    """Check declared native speech + pauses fit; does not claim to assess fluency."""
+    if not has_non_hanzi_speech(parts):
+        return
+    # A quoted timing phrase is dialogue, not an execution instruction.
+    instructions = QUOTED_SPEECH.sub("", TRANSLATION_NOTE.sub("", text))
+    records = list(NATIVE_TIMING.finditer(instructions))
+    markers = re.findall(
+        r"(?:原语(?:朗读估时|音频实测)|Native\s+(?:speech\s+estimate|audio\s+measured))\s*[：:]",
+        instructions, re.I)
+    if len(records) != 1 or len(markers) != 1:
+        errors.append(f"{label}: 非汉语实际台词须有且仅有一项逐镜原语时长指令："
+                      "原语朗读估时：x秒；停连：y秒（已有真实音频才可写原语音频实测）；"
+                      "英文等价为 Native speech estimate: xs; pauses: ys / Native audio measured: xs; pauses: ys；"
+                      "本镜多句按原序合计，中文翻译不计入")
+        return
+    speech = float(records[0]["speech"])
+    pause = float(records[0]["pause"])
+    if speech <= 0:
+        errors.append(f"{label}: 原语发声时长必须大于0秒")
+    if span <= 0 or speech + pause > span + 1e-9:
+        errors.append(f"{label}: 原语发声{speech:g}秒＋停连{pause:g}秒超过镜内{span:g}秒窗口，"
+                      "须调整台词或已核准时间安排；动作可与发声并行，不另加串行总预算")
 
 
 def _pronoun_words(line: str) -> set:
@@ -146,9 +195,90 @@ def _strip_negated_terms(text: str) -> str:
     return "".join(kept)
 
 
+def character_usage(sections: dict, char_names: dict) -> dict:
+    """Extract explicit sources; leave ambiguous pronouns for independent review."""
+    timeline = sections.get("【时间轴】", "")
+    names = {c: _base_name(n) for c, n in char_names.items()}
+    unquote = lambda t: re.sub(r'中文义[：:][^）)\n]*|“[^”\n]*”|"[^"\n]*"|「[^」\n]*」', '', t)
+    action = re.sub(r"[（(]空间[：:].*$", "", unquote(timeline), flags=re.M)
+    def visible_mention(code, name):
+        for clause in re.split(r"[，；。！？\n]", action):
+            if name not in clause and code not in clause:
+                continue
+            token = rf"(?:{re.escape(name)}|{re.escape(code)})"
+            if re.search(token + r"[^，；。]{0,14}(?:镜外|画外|不入镜)", clause):
+                continue
+            if re.search(r"(?:不显示|不拍|不呈现)[^，；。]{0,8}" + token, clause):
+                continue
+            return True
+        return False
+    used = {c for c,n in names.items() if n and visible_mention(c,n)}
+    speakers, ambiguous = set(), []
+    tags = r"(?:口型对白|画外延续|画外旁白|画外余音|低声自语|心理独白|混叠人声)"
+    for line in timeline.splitlines():
+        if not re.search(r"[（(]" + tags, line):
+            if ('"' in line or '“' in line) and re.search(r"台词|对白|旁白|独白|低语", line):
+                ambiguous.append(line)
+            continue
+        explicit = {c for c,n in names.items() if re.search(
+            rf"(?:{re.escape(n)}|{re.escape(c)})\s*[（(]{tags}", line)}
+        choices = "|".join(re.escape(x) for c,n in names.items() for x in (n,c) if x)
+        for group in re.findall(rf"((?:{choices})(?:[、和与](?:{choices}))+)\s*[（(]{tags}", line):
+            explicit.update(c for c,n in names.items() if n in group or c in group)
+        if explicit:
+            speakers.update(explicit)
+            # A line with more source tags than explicit names needs human review.
+            if len(re.findall(r"[（(]" + tags, line)) > len(explicit):
+                ambiguous.append(line)
+        else:
+            outside = unquote(line)
+            candidates = {c for c,n in names.items() if n and (n in outside or c in outside)}
+            if len(candidates) == 1 and not re.search(r"[（(](?:画外旁白|画外余音|心理独白)", line):
+                speakers.update(candidates)
+            else:
+                ambiguous.append(line)
+    return {"used": used, "speakers": speakers, "ambiguous_voice_rows": ambiguous}
+
+
+def check_character_reference_closure(sections: dict, bindings: dict,
+                                      char_names: dict, label: str,
+                                      errors: list[str]) -> None:
+    """Check use -> binding -> reference, rather than only checking bound roles.
+
+    Quoted dialogue mentions do not establish cast membership. Explicit voice
+    sources require a role binding, including offscreen named speakers. Ambiguous
+    pronouns never justify deleting voice locks; independent review must resolve them.
+    """
+    usage = character_usage(sections, char_names or {})
+    bound = set(bindings.get("角色", []))
+    refs = set(re.findall(r"\b(CHAR_[A-Za-z0-9_-]+)\s*[＝=]", sections.get("【参考】", "")))
+    public = sections.get("【公共总规范】", "")
+    consistency = re.search(r"(?:角色一致性[：:]|【角色一致性】)([^。\n]+)", public)
+    voice = re.search(r"声线锁定[：:]([^\n]+)", public)
+    voice_text = voice.group(1) if voice else ""
+    for code, raw_name in (char_names or {}).items():
+        name = _base_name(raw_name)
+        if not name:
+            continue
+        if code in usage["used"] | usage["speakers"] and code not in bound:
+            errors.append(f"{label}: 正文实际出现/发声的 {name}（{code}）未绑定角色资产（CAST-01）")
+        if code in bound and code not in refs:
+            errors.append(f"{label}: 已绑定角色 {name}（{code}）缺少【参考】代码职责项（CAST-02）")
+        if code in refs and code not in bound:
+            errors.append(f"{label}: 【参考】角色 {name}（{code}）没有实际绑定（CAST-02）")
+        identity_elsewhere = re.search(re.escape(name) + r"(?:[：:]|素颜|薄妆|浓妆)", re.sub(r"^声线锁定[^\n]*", "", public, flags=re.M))
+        if ((consistency and name in consistency.group(1)) or identity_elsewhere) and code not in bound:
+            errors.append(f"{label}: 公共人物身份列出未绑定角色 {name}（CAST-03）")
+        locked = bool(re.search(rf"(?:{re.escape(name)}|{re.escape(code)})\s*[＝=：:]", voice_text))
+        if code in usage["speakers"] and not locked:
+            errors.append(f"{label}: 实际说话人 {name} 缺少声线锁定（CAST-04）")
+        if locked and code not in usage["speakers"] and not usage["ambiguous_voice_rows"]:
+            errors.append(f"{label}: 声线锁定列出本段未发声角色 {name}（CAST-04）")
+
+
 def check_prompt(prompt: str, episode: str, shot: str, duration: int, bindings: dict,
                  policy: dict, errors: list[str], char_names: dict | None = None,
-                 oner: bool = False, model: str = "seedance25",
+                 oner: bool = False, model: str | None = None,
                  warnings: list[str] | None = None, tier: str | None = None,
                  extra_fields: dict | None = None,
                  asset_codes: set | None = None,
@@ -157,6 +287,12 @@ def check_prompt(prompt: str, episode: str, shot: str, duration: int, bindings: 
     asset_prompts = asset_prompts or {}
     stats = {"episode": episode, "shot": shot, "model": model,
              "mode": "fight_oner" if oner else "standard", "characters": len(prompt)}
+    if model not in {"seedance25", "wan30", "h3"}:
+        errors.append(f"{label}: check_prompt 必须收到显式有效模型轨，不能静默采用默认分支")
+        return stats
+    if tier is not None and model != "seedance25":
+        errors.append(f"{label}: --tier 仅适用于 Seedance 2.5，不能传给 {model} 分支")
+        return stats
     if model == "h3":
         return check_h3_prompt(prompt, episode, shot, duration, bindings, policy,
                                errors, warnings, extra_fields=extra_fields)
@@ -232,21 +368,35 @@ def check_prompt(prompt: str, episode: str, shot: str, duration: int, bindings: 
             errors.append(
                 f"{label}: 同时声明角色资产图是「不同观察角度」的多视图、又要求「单张电影剧照」——"
                 "参考图形态自相矛盾（WAN30-03）")
-    limit = policy["video"]["prompt_max_chars"]
-    band = (policy["video"]["hard_cuts_min"], policy["video"]["hard_cuts_max"])
+    video_policy = policy.get("video", {})
+    if model == "seedance25" and "Seedance 2.5" not in str(
+            video_policy.get("prompt_max_chars_scope", "")):
+        errors.append(
+            f"{label}: Seedance 字数配置缺少明确作用域；拒绝使用未注明分支的通用字数值")
+        return stats
+    limit = video_policy["prompt_max_chars"]
+    band = (video_policy["hard_cuts_min"], video_policy["hard_cuts_max"])
     if model == "wan30":
-        limit = (policy.get("model_profiles", {}).get("wan30", {})
-                 .get("prompt_max_chars", limit))
-    tiers = policy["video"].get("prompt_quality_tiers", {})
+        profile = policy.get("model_profiles", {}).get("wan30", {})
+        cap = profile.get("prompt_max_chars")
+        if type(cap) is not int or cap <= 0:
+            errors.append(
+                f"{label}: policy.json 缺少 Wan3.0 字数 profile；拒绝回退到 Seedance 配置")
+            return stats
+        limit = cap
+    tiers = video_policy.get("prompt_quality_tiers", {})
     if tier and tier in tiers and model != "wan30":
         selected = tiers[tier]
         limit = selected.get("prompt_max_chars", limit)
         band = _band(selected.get("hard_cuts", ""), band)
-    if oner:
-        limit = (policy["video"].get("prompt_quality_tiers", {})
+    # The one-take fight cap belongs to Seedance's tier-3 profile only.
+    # Wan and H3 keep their own branch limits; never overwrite them with 4500.
+    if oner and model == "seedance25":
+        limit = (video_policy.get("prompt_quality_tiers", {})
                  .get("tier3_full_xiaomo63", {}).get("prompt_max_chars", limit))
     if len(prompt) > limit:
-        errors.append(f"{label}: 视频提示词 {len(prompt)} 字符，超过 {limit}")
+        cap_label = " 硬顶" if model == "wan30" else ""
+        errors.append(f"{label}: 视频提示词 {len(prompt)} 字符，超过 {limit}{cap_label}")
     if model != "wan30" and IMAGE_NUMBER.search(prompt):
         errors.append(f"{label}: 导入文件没有图片附件，不得预写 @Image/@图片 编号"
                       "（本轨用资产代码点名；编号由应用按上传槽位生成）")
@@ -267,6 +417,7 @@ def check_prompt(prompt: str, episode: str, shot: str, duration: int, bindings: 
         sections[heading] = prompt[positions[index] + len(heading):end].strip()
         if not sections[heading]:
             errors.append(f"{label}: {heading} 内容为空")
+    check_character_reference_closure(sections, bindings, char_names or {}, label, errors)
     if model == "wan30":
         dup = re.search(r"(?:CHAR|LOC|PROP)_\d+[ \u3000]+[^＝；，\n]{1,24}＝",
                         sections["【参考】"])
@@ -324,8 +475,9 @@ def check_prompt(prompt: str, episode: str, shot: str, duration: int, bindings: 
         else:
             rows.append(matched)
             text = matched["text"]
+            actual_lines = spoken_quotes(text)
             tags = policy.get("voice", {}).get("source_tags", [])
-            if tags and any(quote in text for quote in ('"', "“", "”")):
+            if tags and actual_lines:
                 if not any(tag in text for tag in tags):
                     errors.append(f"{label}: 含台词的镜头行缺少声音来源标签（口型对白/心理独白/画外旁白/画外余音/画外延续/低声自语/混叠人声）")
                 if policy.get("voice", {}).get("require_lip_state", True) and "口型" not in text:
@@ -355,10 +507,11 @@ def check_prompt(prompt: str, episode: str, shot: str, duration: int, bindings: 
                             warnings.append(f"{label}: 镜头行用了需判定的情绪词「{word}」：须确认该镜目标情绪极性确实包含它（如真相反转后的释然），否则视为微笑漂移风险并改写")
                             break
             max_rate = policy.get("voice", {}).get("max_hanzi_per_sec", 5.0)
-            if max_rate and '"' in text:
-                quoted = re.findall(r'"([^"]*)"', text)
-                hanzi = sum(len(re.findall(r"[\u4e00-\u9fff]", part)) for part in quoted)
-                span = float(matched["end"]) - float(matched["start"])
+            span = float(matched["end"]) - float(matched["start"])
+            check_native_timing(text, actual_lines, span,
+                                f"{label}/起于{matched['start']}秒", errors)
+            if max_rate and actual_lines:
+                hanzi = sum(len(re.findall(r"[\u4e00-\u9fff]", part)) for part in actual_lines)
                 if span > 0 and hanzi / span > max_rate:
                     exempt = policy.get("voice", {}).get("rate_exempt_keywords", [])
                     if not any(word in text for word in exempt):
@@ -375,8 +528,8 @@ def check_prompt(prompt: str, episode: str, shot: str, duration: int, bindings: 
         worst_at, worst = max(thin_shots, key=lambda item: item[1])
         warnings.append(
             f"{label}: {len(thin_shots)} 镜台词占镜内时长超过 {share_limit:.0%}"
-            f"（最紧一镜起于 {worst_at} 秒、占到 {worst:.0%}），镜内没有动作余量；"
-            "按 S02 口径台词之外还须留出动作与呼吸，须拆台词或补动作镜")
+            f"（最紧一镜起于 {worst_at} 秒、占到 {worst:.0%}），需评审动作余量与停连；"
+            "对白可与动作并行，该占比仅提醒对白密度，不能据此判定动作无法成立或强制补镜")
     if not rows:
         errors.append(f"{label}: 没有可解析的镜头行")
         return stats
@@ -424,6 +577,13 @@ def check_prompt(prompt: str, episode: str, shot: str, duration: int, bindings: 
             if not _ap:
                 continue
             _raw = re.sub(r"（[^）]*）", "", _m.group(1))
+            # An explicit identity-image citation has no appearance facts to compare.
+            # Accept only this exact form, the same asset code, and an actual binding;
+            # any appended clothing/appearance text still undergoes the usual checks.
+            if (re.fullmatch(rf"身份外观遵循\s*{re.escape(_code)}\s*(?:用户原始|人物|角色)参考图", _raw.strip())
+                    and _code in bindings.get("角色", [])
+                    and _code in sections.get("【参考】", "")):
+                continue
             _anchors = [a.strip() for a in re.split(r"[／/、→]", _raw) if a.strip()]
             if not _anchors:
                 continue
@@ -578,6 +738,27 @@ def check_h3_prompt(prompt: str, episode: str, shot: str, duration: int, binding
             segment_end = shots[index + 1].start() if index + 1 < len(shots) else len(body)
             segment = body[shot_match.end():segment_end]
             stamp = H3_TIME.search(segment[:80])
+            # In H3 the start is implicit at Shot 1 and explicit at each cut;
+            # speech instructions stay outside <d>, preserving actual spoken text.
+            start = 0.0 if index == 0 else None
+            if stamp and index > 0:
+                m, s, ms = stamp.groups()
+                start = int(m) * 60 + int(s) + int(ms) / 1000
+            end = float(duration)
+            if index + 1 < len(shots):
+                next_end = shots[index + 2].start() if index + 2 < len(shots) else len(body)
+                next_segment = body[shots[index + 1].end():next_end]
+                next_stamp = H3_TIME.search(next_segment[:80])
+                if next_stamp:
+                    m, s, ms = next_stamp.groups()
+                    end = int(m) * 60 + int(s) + int(ms) / 1000
+                else:
+                    end = None
+            actual_lines = [re.sub(r"^\s*\[[^\]]+\]\s*", "", TRANSLATION_NOTE.sub("", part))
+                            for part in H3_DIALOG.findall(segment)]
+            if start is not None and end is not None:
+                check_native_timing(H3_DIALOG.sub("", segment), actual_lines,
+                                    end - start, f"{label}/Shot {numbers[index]}", errors)
             if index == 0:
                 if stamp:
                     errors.append(f"{label}: [Shot 1] 不应带时间戳")
@@ -911,6 +1092,13 @@ def _space_overlays(space_dir: Path) -> dict:
     return index
 
 
+def _normalize_space_timecode(value: str) -> str:
+    """Normalize W18 ranges such as ``0–2秒`` to the prompt's ``0-2`` form."""
+    match = re.fullmatch(
+        r"\s*(\d+(?:\.5)?)\s*[-–~至]\s*(\d+(?:\.5)?)\s*秒?\s*", str(value or ""))
+    return f"{match.group(1)}-{match.group(2)}" if match else str(value or "").strip()
+
+
 def _space_screen_side(overlay: dict, position: list) -> str:
     """Which side of the frame a character sits on, from the overlay camera."""
     camera = overlay.get("camera") or {}
@@ -972,7 +1160,7 @@ def space_exempted(pkg_path: Path) -> bool:
 
 
 def check_space_sync(parsed: dict, char_names: dict, space_dir: Path,
-                     model: str = "seedance25") -> tuple[list[str], list[str], dict]:
+                     model: str) -> tuple[list[str], list[str], dict]:
     """Cross-check the prompt body against the SCENE_JSON shot overlays.
 
     Five checks per fragment that has a space layer:
@@ -1047,7 +1235,7 @@ def check_space_sync(parsed: dict, char_names: dict, space_dir: Path,
                         continue
                     covered.add(idx)
                     got = str(overlay.get("timecode", ""))
-                    if got and got != want:
+                    if got and _normalize_space_timecode(got) != want:
                         errors.append(
                             f"{label}: 站位增量 {shot_id} 的时间码 {got} "
                             f"与正文 S{idx:02d} 时间行 {want} 不一致")
@@ -1114,6 +1302,54 @@ def _anchor_segment(prompt: str, name: str) -> str:
     body = prompt.split("【公共总规范】")[-1].split("【时间轴】")[0]
     match = re.search(re.escape(name) + r"[：:]([^；。\n]{1,120})", body)
     return match.group(1) if match else ""
+
+
+IDENTITY_SEC = re.compile(r"【角色一致性】([^【]+)")
+IDENTITY_PLAIN = re.compile(r"角色一致性[：:]([^【]+?)(?=表演核心|镜头语言|声音纪律|空间锚点|【|$)")
+ANCHOR = re.compile(r"([\u4e00-\u9fa5]{2,4})：([^；。\n]{2,60})")
+def check_identity_and_reference_budget(episodes: list, char_names: dict,
+                                        errors: list, warnings: list) -> dict:
+    """WAN30-09 角色一致性全包同源 + WAN30-08 参考预算。
+
+    Wan 全身 9:16 角色参考图锁定全套服装；视频正文只保留发型、固定饰件、
+    外套品类与固有色三锚。下装与鞋不在正文重复，避免图文两套真值。
+    """
+    names = {re.split(r"[（(]", n)[0].strip() for n in char_names.values() if n}
+    anchors: dict[str, dict[str, list[str]]] = {}
+    stats = {"segments": 0, "above_recommended": 0, "over_budget": 0}
+    for episode in episodes:
+        for shot in episode["shots"]:
+            prompt = shot["prompts"].get("视频提示词", "")
+            if not prompt:
+                continue
+            stats["segments"] += 1
+            label = f"{episode['code']}/{shot['code']}"
+            match = IDENTITY_SEC.search(prompt) or IDENTITY_PLAIN.search(prompt)
+            if match:
+                body = match.group(1)
+                for name, desc in ANCHOR.findall(body):
+                    if name not in names:
+                        continue
+                    anchors.setdefault(name, {}).setdefault(desc.strip(), []).append(label)
+            bound = {code for codes in shot["bindings"].values() for code in codes}
+            if len(bound) > 10:
+                stats["over_budget"] += 1
+                errors.append(
+                    f"{label}: 绑定 {len(bound)} 项参考资产，超过 Wan3.0 参考图硬上限 10 张"
+                    "（WAN30-08：只保留本段实际需要的参考）")
+            elif len(bound) > 6:
+                stats["above_recommended"] += 1
+                warnings.append(
+                    f"{label}: 绑定 {len(bound)} 项参考资产，高于建议值 6 张；"
+                    "请确认【参考】逐项写明本段职责，不得仅为满足建议值删除有效参考（WAN30-08）")
+    for name, variants in anchors.items():
+        if len(variants) > 1:
+            detail = "；".join(f"「{desc[:18]}…」（{len(labels)} 段）" for desc, labels in
+                              list(variants.items())[:3])
+            warnings.append(
+                f"角色一致性跨段不一致：{name} 有 {len(variants)} 种锚词写法——{detail}"
+                "（WAN30-09：同一角色的锚词须全包逐字一致，改一处要全量回灌）")
+    return stats
 
 
 def check_outfit_consistency(parsed: dict, char_names: dict,
@@ -1281,14 +1517,18 @@ def check_outfit_consistency(parsed: dict, char_names: dict,
     return stats
 
 
-SCENE_SKIP = re.compile(r"无人物|不出现|不含|没有|禁止|0\s*人|空镜|场景底板|站位|overlay|片段绑定")
+SCENE_SKIP = re.compile(r"场景底板|站位|overlay|片段绑定")
+SCENE_NEGATION = re.compile(
+    r"(?:不(?:要|出现|含|带|添加|生成|得|可|能|打蜡|涂蜡)?|无|没有|未(?:出现|含)|禁止|避免|不得|不可)\s*$"
+)
 SCENE_DEFAULTS = {
     "empty_statement": r"无人物|无人|0\s*人|空镜",
     "person_pattern": (r"男子|女子|男人|女人|身影|行人|人群|角色|人物|人脸|的人|一位|一名|"
                        r"有个|盐工|工人|游客|路人|商贩|司机|警察|护士(?!站)|"
                        r"医生(?!办公室|诊室)|保安|服务员|顾客|小孩|孩子|老人"),
-    "movable_pattern": r"轿车|汽车|车辆|卡车|摩托|自行车|三轮车|船|动物|狗|猫|车(?!道|站|位|库|辙|流|行)",
-    "oily_pattern": r"油润|湿反光|镜面反光|硬边高光|金边|光晕|丁达尔|镜头光斑|打蜡",
+    "movable_pattern": (r"轿车|汽车|车辆|卡车|摩托|自行车|三轮车|船|(?<!可移)动物|狗|猫|"
+                        r"(?<!停)车(?!道|站|位|库|辙|流|行|区|体|窗|门|牌|顶|轮|胎|厢|速|间|设|架)"),
+    "oily_pattern": r"油润|湿反光|镜面反光|硬边高光|金边|光晕|丁达尔|镜头光斑|打蜡|球差|柔焦|油光|高光滚降|均匀柔和的顶",
     "realism_pattern": r"真实现场照片|胶片|手机随手拍|纪实摄影|现场记录",
     "plate_marker": "场景底板",
     "fixed_marker": "固定陈设",
@@ -1313,6 +1553,16 @@ def check_scene_plate(assets: list[dict], errors: list[str], warnings: list[str]
     plate_marker = cfg["plate_marker"]
     fixed_marker = cfg["fixed_marker"]
 
+    def is_negated(sentence: str, start: int) -> bool:
+        before = sentence[:start]
+        # A leading negative applies to an enumerated list as well:
+        # "不出现车辆、动物与手持道具" must not flag the later list items.
+        recent_clause = re.split(r"[，,。；]", before)[-1]
+        after = sentence[start:]
+        return bool(SCENE_NEGATION.search(recent_clause)
+                    or re.search(r"(?:不(?:要|出现|含|带|添加|生成|得|可|能)|无|没有|未(?:出现|含)|禁止|避免|不得|不可)", recent_clause)
+                    or re.match(r"(?:不出现|不存在|没有|未出现)", after))
+
     for asset in assets:
         if asset["kind"] != "场景":
             continue
@@ -1334,28 +1584,145 @@ def check_scene_plate(assets: list[dict], errors: list[str], warnings: list[str]
         for sentence in re.split(r"[。；\n]", positive):
             if not sentence.strip() or SCENE_SKIP.search(sentence):
                 continue
-            if person_re.search(sentence):
+            person = next((m for m in person_re.finditer(sentence)
+                           if not is_negated(sentence, m.start())), None)
+            if person:
                 errors.append(
                     f"{code}: 场景图正向句出现人物（{sentence.strip()[:36]}）——"
                     "人物由角色塑像图锁，场景图只留空镜")
             for oily in oily_re.finditer(sentence):
-                if re.search(r"[不无禁避免防]", sentence[max(0, oily.start() - 3):oily.start()]):
+                if is_negated(sentence, oily.start()):
                     continue
                 errors.append(
                     f"{code}: 场景图正向句出现「{oily.group(0)}」——"
-                    "「油润/湿反光/镜面/硬边高光/金边/光晕」会把图推向 HDR 与塑料感；"
-                    "改成哑光材质、局部柔和高光")
+                    "「油润/湿反光/镜面/硬边高光/金边/光晕/球差柔焦/油光/高光滚降」"
+                    "会把图推向 HDR 与塑料感；改成哑光材质、只有一条窄高光")
                 break
             for match in movable_re.finditer(sentence):
                 if fixed_marker in sentence:
                     continue
-                if re.search(r"[不无禁避免防]", sentence[max(0, match.start() - 3):match.start()]):
+                if is_negated(sentence, match.start()):
                     continue
                 errors.append(
                     f"{code}: 场景图出现可移动道具「{match.group(0)}」——"
                     "车辆/动物应登记为 PROP，由片段绑定；确需固定陈设须标「固定陈设」并写净距")
                 break
 
+
+
+BEAUTY_DEFAULTS = {"beauty_pattern": r"细腻|通透|有光泽|丝光|水光|奶油光|唇面润"}
+
+
+def check_beauty_words(assets: list[dict], episodes: list[dict], policy: dict,
+                       warnings: list[str]) -> None:
+    """美颜词＝磨皮打油，定提醒级而不是判错。
+
+    「细腻／通透／有光泽／丝光／水光／奶油光／唇面润」在中文里是褒义词，
+    模型却按字面执行：磨掉毛孔、把高光摊成一片，出来就是蜡像和塑料。
+    通透、润 在玻璃、玉石、漆面等材质上又是正当词，所以不硬拦，交评审处置。
+    《替身千金》E01 成片已实证：近景局部对比掉到 3.8，脸上只剩高光没有纹理。
+    """
+    pat = ((policy.get("prompt_layers") or {}).get("beauty_pattern")
+           or BEAUTY_DEFAULTS["beauty_pattern"])
+    beauty_re = re.compile(pat)
+    targets: list[tuple[str, str]] = []
+    for asset in assets:
+        if (asset.get("prompt") or "").strip():
+            targets.append((asset["code"], asset["prompt"]))
+    for episode in episodes:
+        for shot in episode.get("shots", []):
+            prompt = (shot.get("prompts", {}) or {}).get("视频提示词", "")
+            if prompt.strip():
+                targets.append(
+                    (f"{episode.get('code', '')}/{shot.get('code', '')}", prompt))
+    for label, text in targets:
+        positive = re.split(r"负向限制[：:]|不要[：:]", text)[0]
+        hits: list[str] = []
+        for match in beauty_re.finditer(positive):
+            before = positive[max(0, match.start() - 3):match.start()]
+            if re.search(r"[不无禁避免防]", before):
+                continue
+            hits.append(match.group(0))
+        if hits:
+            words = "、".join(dict.fromkeys(hits))
+            warnings.append(
+                f"{label}: 出现美颜词「{words}」——模型会照字面磨皮、把高光摊成一片，"
+                "成图发蜡发油；改成「皮肤有颗粒感／哑光／只有一条窄高光」，"
+                "见 asset-image-production 的真实感锚")
+
+
+def check_character_style_consistency(assets: list[dict], warnings: list[str]) -> None:
+    """角色卡必须声明「与视频同一画风」。
+
+    资产图与视频画风不一致时，模型会把参考图当成「另一种风格的照片」只取脸、
+    丢掉材质与光——成片里就会出现「脸是这个人、质感不是这部片」。
+    """
+    for asset in assets:
+        if asset["kind"] != "角色":
+            continue
+        prompt = asset.get("prompt", "")
+        if not prompt.strip():
+            continue
+        if not re.search(r"画风一致|同一画风|与视频同风格|真实感锚", prompt):
+            warnings.append(
+                f"{asset['code']}: 角色卡没有声明「画风一致」——补一句「本图与视频同一画风："
+                "真人电影写实摄影、低饱和、低对比、哑光、可见毛孔与发丝；不是 CG／插画／时尚棚拍」，"
+                "否则模型只取脸、不取质感")
+
+
+def check_character_ratio_consistency(assets: list[dict], warnings: list[str]) -> None:
+    """同一项目的角色卡不能横竖混用：9:16 与 16:9 混排，挂进同一段视频时裁切基准不一致。"""
+    ratios: dict[str, str] = {}
+    for asset in assets:
+        if asset["kind"] != "角色":
+            continue
+        prompt = asset.get("prompt", "")
+        has_v, has_h = "9:16" in prompt, "16:9" in prompt
+        if has_v and not has_h:
+            ratios[asset["code"]] = "9:16"
+        elif has_h and not has_v:
+            ratios[asset["code"]] = "16:9"
+    kinds = set(ratios.values())
+    if len(kinds) > 1:
+        detail = "、".join(f"{c}={r}" for c, r in sorted(ratios.items()))
+        warnings.append(
+            f"角色卡画幅横竖混用（{detail}）——同一项目的角色参考图必须统一画幅，"
+            "否则挂进同一段视频时裁切基准不一致；改齐后再出图")
+
+
+OUTFIT_STRUCT = re.compile(
+    r"腰身|袖口|裙摆|领口|下摆|开衩|版型|剪裁|面料|垫肩|收腰|立领|圆领|七分袖|长袖|短袖|暗襟|斜襟")
+OUTFIT_FABRIC = re.compile(r"泰丝|棉布|雪纺|丝绸|羊毛|府绸|棉麻|帆布|真丝|织锦")
+
+
+def check_video_outfit_restatement(episodes: list[dict], warnings: list[str]) -> None:
+    """视频正文重描服装结构＝给同一套衣服造第二套真值。
+
+    《替身千金》E02-SH04 已实证：时间行写「米色棉布连衣裙的腰身松出一大把…
+    袖口长过手腕」，这些本该由服装变体资产图承担；正文写一遍，模型就会按文字
+    重新生成一次，近景吃字、全身吃图，同段两套并存，看起来就是换装。
+    只扫时间行（数字-数字秒开头），避免公共层的「本文不重写剪裁」这类元句误报。
+    """
+    for episode in episodes:
+        for shot in episode.get("shots", []):
+            prompt = (shot.get("prompts", {}) or {}).get("视频提示词", "")
+            if not prompt.strip():
+                continue
+            label = f"{episode.get('code', '')}/{shot.get('code', '')}"
+            for line in prompt.splitlines():
+                if not re.match(r"^\s*\d+(\.\d+)?-\d+(\.\d+)?秒", line):
+                    continue
+                if re.search(r"不写|不重写|不描述|交给资产|以参考图为准", line):
+                    continue
+                structs = OUTFIT_STRUCT.findall(line)
+                fabrics = OUTFIT_FABRIC.findall(line)
+                if (fabrics and structs) or len(set(structs)) >= 3:
+                    words = "、".join(dict.fromkeys(structs + fabrics))
+                    warnings.append(
+                        f"{label}: 时间行重描了服装结构「{words}」——服装由资产图承担，"
+                        "正文只写识别锚（发型／固定饰件／外套品类＋固有色）与状态变化；"
+                        "重描会造出第二套真值，近景与全身对不上（LAYER-02）")
+                    break
 
 
 def check_prompt_layers(parsed: dict, char_names: dict[str, str], policy: dict,
@@ -1453,11 +1820,34 @@ def check_prompt_layers(parsed: dict, char_names: dict[str, str], policy: dict,
                     "道具图已经锁死尺寸、材质、纹样；正文只写开合/新旧/有字/在谁手里（LAYER-01）")
 
 
-def validate(source: str, policy: dict, model: str = "seedance25",
+def validate(source: str, policy: dict, model: str | None = None,
              tier: str | None = None, h3_segments: str = "app",
              baseline: str | None = None,
              space_dir: Path | None = None,
-             space_exempt: bool = False) -> dict:
+             space_exempt: bool = False,
+             source_file: Path | None = None) -> dict:
+    # API 调用同样 fail closed：优先读取同项目输入单，缺失/含糊时要求调用方显式传轨。
+    if model is None and source_file is not None:
+        brief_path = source_file.resolve().parent / "内部" / "00-项目输入单.md"
+        if brief_path.is_file():
+            try:
+                brief = brief_path.read_text(encoding="utf-8")
+            except (OSError, UnicodeError):
+                brief = ""
+            branch_rows = re.findall(
+                r"^\|\s*生成轨\s*\|\s*([^|]*?)\s*\|\s*$", brief, re.M | re.I)
+            if len(branch_rows) == 1 and branch_rows[0].lower() in {"seedance25", "wan30", "h3"}:
+                model = branch_rows[0].lower()
+    if model not in {"seedance25", "wan30", "h3"}:
+        return {
+            "ok": False, "episodes": 0, "segments": 0, "assets": 0,
+            "identity": {}, "stats": {}, "space": {"status": "skipped"},
+            "outfit": {}, "warnings": [],
+            "errors": [
+                "validate() 未能确认唯一有效模型轨；请传入 model=seedance25|wan30|h3，"
+                "或提供含唯一生成轨登记的 source_file"
+            ],
+        }
     errors: list[str] = []
     warnings: list[str] = []
     request_bytes = len(json.dumps(
@@ -1468,6 +1858,14 @@ def validate(source: str, policy: dict, model: str = "seedance25",
     max_bytes = policy["delivery"]["import_request_max_bytes"]
     if request_bytes >= max_bytes:
         errors.append(f"导入请求约 {request_bytes} 字节，达到目标应用的 {max_bytes} 字节上限")
+    # User-selected layout exceptions live in project metadata, never in provider text.
+    user_four_views: set[str] = set()
+    if source_file is not None:
+        brief_path = source_file.resolve().parent / "内部" / "00-项目输入单.md"
+        if brief_path.is_file():
+            user_four_views = set(re.findall(
+                r"^角色资产版式覆盖[：:]\s*(CHAR_[A-Za-z0-9_-]+)\s*=\s*四视图",
+                brief_path.read_text(encoding="utf-8"), flags=re.M))
     parsed = parse_structure(source)
     assets: list[dict] = parsed["assets"]
     episodes: list[dict] = parsed["episodes"]
@@ -1490,6 +1888,10 @@ def validate(source: str, policy: dict, model: str = "seedance25",
                     errors.append(f"声线锁定跨片段不一致：{name} 的锚点出现两种写法（母版只能维护一处，全量派生）")
                 voice_map[name] = desc
     check_scene_plate(assets, errors, warnings, policy)
+    check_beauty_words(assets, episodes, policy, warnings)
+    check_video_outfit_restatement(episodes, warnings)
+    check_character_ratio_consistency(assets, warnings)
+    check_character_style_consistency(assets, warnings)
     if not episodes:
         errors.append("至少需要一个剧集")
     codes: dict[str, str] = {}
@@ -1504,6 +1906,10 @@ def validate(source: str, policy: dict, model: str = "seedance25",
         if kind == "角色":
             char_names[code] = asset["name"]
         asset_prompts[code] = asset["prompt"]
+        if ASSET_PROMPT_METADATA.search(asset["prompt"]):
+            errors.append(
+                f"{code}: 图片提示词混入来源说明、本地路径或项目操作指令；"
+                "此字段会原样发送供应商，必须填写可执行绘图正文，来源与绑定说明移至内部档案")
         if kind == "道具" and "·" in asset["name"] and DUP_VARIANT.search(asset["prompt"]):
             errors.append(
                 f"{code}「{asset['name']}」: 服装变体与角色默认装同款——同一套衣服不能既是默认装"
@@ -1530,23 +1936,55 @@ def validate(source: str, policy: dict, model: str = "seedance25",
                 warnings.append(f"{code}「{asset['name']}」: 带字道具的资产图不应要求可读文字——"
                                 "资产图只给抽象墨痕/笔道形态，实际文字由提示词层声明")
         if kind in ("角色", "场景") and asset["prompt"].strip():
-            ratio = policy["assets"]["character_ratio" if kind == "角色" else "scene_ratio"]
-            if ratio not in asset["prompt"]:
-                errors.append(f"{code}: 图片提示词缺少默认画幅 {ratio}")
-            layout = "四视图" if kind == "角色" else "全景"
-            if kind == "角色":
-                # 一人一卡：角色资产图也可以是「场景内单张电影剧照」（视频参考形态），
-                # 但必须显式写清，不能只靠「不是四视图」这种否定句蒙过版式检查。
-                still = "单张" in asset["prompt"] and (
-                    "剧照" in asset["prompt"] or "单人" in asset["prompt"])
-                if not still and layout not in asset["prompt"]:
-                    errors.append(
-                        f"{code}: 图片提示词缺少默认{layout}版式，"
-                        "也未声明一人一卡的单张剧照版式")
-            elif layout not in asset["prompt"]:
-                errors.append(f"{code}: 图片提示词缺少默认{layout}版式")
             if kind == "角色":
                 if model == "wan30":
+                    want = policy["assets"].get("wan30_character_ratio")
+                    if not want:
+                        errors.append(
+                            f"{code}: policy.assets.wan30_character_ratio 未配置，"
+                            "Wan3.0 角色资产版式必须明确登记，不能回退到通用默认值")
+                    elif want not in asset["prompt"]:
+                        errors.append(
+                            f"{code}: Wan3.0 轨角色资产图必须明确写 {want}，"
+                            f"当前分支版式为正面单人全身塑像图（policy.assets.wan30_character_ratio）")
+                else:
+                    allowed = policy["assets"].get("character_ratios") or [
+                        policy["assets"]["character_ratio"]]
+                    if not any(r in asset["prompt"] for r in allowed):
+                        errors.append(
+                            f"{code}: 图片提示词缺少画幅（角色资产可用 {'／'.join(allowed)}）")
+
+            else:
+                ratio = policy["assets"]["scene_ratio"]
+                if ratio not in asset["prompt"]:
+                    errors.append(f"{code}: 图片提示词缺少默认画幅 {ratio}")
+            layout = "四视图" if kind == "角色" else "全景"
+            if kind == "角色":
+                # Apply the registered track's layout. Wan statue assets are
+                # checked below; they must not first pass through Seedance/H3's
+                # generic four-view-or-still gate.
+                if model == "wan30":
+                    pass
+                else:
+                    # One identity card may be a single cinematic still, but
+                    # the prompt must state it positively rather than only
+                    # denying four-view layouts.
+                    still = "单张" in asset["prompt"] and (
+                        "剧照" in asset["prompt"] or "单人" in asset["prompt"])
+                    if not still and layout not in asset["prompt"]:
+                        errors.append(
+                            f"{code}: 图片提示词缺少默认{layout}版式，"
+                            "也未声明一人一卡的单张剧照版式")
+            elif layout not in asset["prompt"] and not (
+                    kind == "场景" and "单张空镜" in asset["prompt"]
+                    and policy["assets"]["scene_ratio"] in asset["prompt"]):
+                errors.append(f"{code}: 图片提示词缺少默认{layout}版式")
+            if kind == "角色":
+                if model == "wan30" and code in user_four_views:
+                    required = ("四视图", "身份特写", "全身", "侧", "背")
+                    if not all(word in asset["prompt"] for word in required):
+                        errors.append(f"{code}: 用户选定四视图，但图片提示词缺少身份特写与正侧背全身版式")
+                if model == "wan30" and code not in user_four_views:
                     text = asset["prompt"]
                     single = ("单人" in text or "不出现第二人" in text
                               or re.search(r"只有[^，。]{0,6}一个人", text))
@@ -1561,9 +1999,9 @@ def validate(source: str, policy: dict, model: str = "seedance25",
                         errors.append(f"{code}: 角色资产图没有写下装（裤/裙）——全身塑像必须写下装版型")
                     if "鞋" not in text and "靴" not in text:
                         errors.append(f"{code}: 角色资产图没有写鞋——全身塑像必须写鞋型与鞋底")
-                    if "塑像" not in text and "单张" not in text:
+                    if "塑像" not in text:
                         errors.append(
-                            f"{code}: Wan3.0 轨角色资产图须写明「单人塑像/单张」，不得用四视图拼版")
+                            f"{code}: Wan3.0 轨角色资产图须明确为塑像图；仅写「单张」不能证明是正确的人物资产形态")
                     cleaned = "\n".join(
                         _strip_negated_terms(l) for l in text.split("\n")
                         if not re.match(r"\s*(?:不要|禁止|不得|避免|不可|负向限制|排除)", l))
@@ -1583,15 +2021,23 @@ def validate(source: str, policy: dict, model: str = "seedance25",
                         errors.append(
                             f"{code}: 资产卡写了「3/4」——模型会按侧身 45° 理解，锁脸变弱；"
                             "改为「正面，最多 5° 微侧」")
-                    m_h = re.search(r"占画面高度约?\s*(\d+)\s*%", text)
-                    if not m_h:
-                        warnings.append(
-                            f"{code}: 角色资产图没写占画面高度——建议 92%–94%；"
-                            "人物太小，脸和服装细节分不到像素")
-                    if m_h and int(m_h.group(1)) < 88:
+                    if not re.search(r"正面", cleaned):
                         errors.append(
-                            f"{code}: 人物只占画面高度 {m_h.group(1)}%，脸与服装分到的像素太少；"
-                            "资产卡占高须 92%–94%")
+                            f"{code}: Wan3.0 角色资产图必须明确声明正面视角；"
+                            "角色卡作为视频参考时需要锁定正脸与双眼方向")
+                    m_h = re.search(
+                        r"占画面高度约?\s*(\d+)\s*%\s*(?:[–—-]\s*(\d+)\s*%)?", text)
+                    if not m_h:
+                        errors.append(
+                            f"{code}: Wan3.0 角色资产图必须明确写占高 92%–94%，缺少占高声明")
+                    else:
+                        heights = [int(m_h.group(1))]
+                        if m_h.group(2):
+                            heights.append(int(m_h.group(2)))
+                        if any(height < 92 or height > 94 for height in heights):
+                            errors.append(
+                                f"{code}: 人物占画面高度须为 92%–94%；"
+                                f"提示词写为 {m_h.group(0)}")
                 _check_character_prompt_fields(asset, policy, warnings)
     # 一人一卡：同一角色的第二张卡（CHAR_0X_PHOTO 之类的后缀变体）在导入端会被当成
     # 新角色，典型后果是 5 人变 10 人、旧的孤儿卡删不掉。这里按「去掉后缀后同名」判重。
@@ -1672,6 +2118,7 @@ def validate(source: str, policy: dict, model: str = "seedance25",
                                       extra_fields={k: v for k, v in shot["prompts"].items()
                                                     if k != "视频提示词"}))
     outfit_stats = check_outfit_consistency(parsed, char_names, errors, warnings)
+    identity_stats = check_identity_and_reference_budget(episodes, char_names, errors, warnings)
     space_stats = {"status": "skipped"}
     if space_dir is not None:
         space_errors, space_warnings, space_stats = check_space_sync(
@@ -1691,6 +2138,7 @@ def validate(source: str, policy: dict, model: str = "seedance25",
             extra = f"（本包 {risky} 个多人同框镜头）" if risky else ""
             warnings.append(f"站位层：已按输入单登记豁免，跳过站位交叉校验{extra}")
     return {"ok": not errors, "episodes": len(episodes), "segments": len(stats),
+            "identity": identity_stats,
             "assets": len(assets), "import_request_bytes": request_bytes,
             "stats": stats, "space": space_stats, "outfit": outfit_stats,
             "errors": errors, "warnings": warnings}
@@ -1700,10 +2148,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="校验可导入的短剧精简制作包 Markdown")
     parser.add_argument("file", type=Path, help="已填写的精简制作包 Markdown 文件")
     parser.add_argument("--model", choices=["seedance25", "wan30", "h3"],
-                        default="seedance25",
-                        help="生成模型轨：seedance25（默认，整数秒/分档字数）、"
-                             "wan30（0.5秒粒度/20000字符/2-30秒）、"
-                             "h3（MiniMax H3 官方字段结构/app 默认30秒、official 4-15秒/毫秒切点）")
+                        default=None,
+                        help="生成模型轨；项目包旁有内部/00-项目输入单.md 时默认读取登记轨，"
+                             "无输入单时必须显式指定，避免静默使用其它轨。Wan3.0（0.5秒/仅硬顶18000/无字数下限/2-30秒）；"
+                             "H3（官方字段/app默认30秒、official 4-15秒/毫秒切点）")
     parser.add_argument("--tier", choices=["tier1_standard", "tier2_xiaomo63",
                                            "tier3_full_xiaomo63"],
                         default=None,
@@ -1723,6 +2171,34 @@ def main() -> int:
     try:
         source = args.file.read_text(encoding="utf-8")
         policy = json.loads((Path(__file__).resolve().parent.parent / "policy.json").read_text())
+        brief_path = args.file.resolve().parent / "内部" / "00-项目输入单.md"
+        manifest_branch = None
+        if brief_path.is_file():
+            brief = brief_path.read_text(encoding="utf-8")
+            branch_rows = re.findall(
+                r"^\|\s*生成轨\s*\|\s*([^|]*?)\s*\|\s*$", brief, re.M | re.I)
+            valid_branches = {"seedance25", "wan30", "h3"}
+            if len(branch_rows) != 1 or branch_rows[0].lower() not in valid_branches:
+                print(
+                    "输入单生成轨必须且只能有一个有效登记值：seedance25、wan30 或 h3；"
+                    f"读取到 {branch_rows!r}", file=sys.stderr)
+                return 2
+            manifest_branch = branch_rows[0].lower()
+        if manifest_branch and args.model and args.model != manifest_branch:
+            print(
+                f"模型轨不匹配：输入单登记 {manifest_branch}，命令指定 {args.model}",
+                file=sys.stderr)
+            return 1
+        if not manifest_branch and not args.model:
+            print(
+                "未找到输入单生成轨；请在 内部/00-项目输入单.md 登记唯一生成轨，"
+                "或显式指定 --model seedance25|wan30|h3",
+                file=sys.stderr)
+            return 2
+        selected_model = args.model or manifest_branch
+        if args.tier and selected_model != "seedance25":
+            print("--tier 只适用于 Seedance 2.5；Wan3.0/H3 必须使用各自模型策略", file=sys.stderr)
+            return 2
         baseline = None
         if args.sequel_baseline:
             baseline = args.sequel_baseline.read_text(encoding="utf-8")
@@ -1732,10 +2208,11 @@ def main() -> int:
             for part in SPACE_DEFAULT_DIR:
                 candidate = candidate / part
             space_dir = candidate
-        result = validate(source, policy, model=args.model, tier=args.tier,
+        result = validate(source, policy, model=selected_model, tier=args.tier,
                           h3_segments=args.h3_segments, baseline=baseline,
                           space_dir=space_dir,
-                          space_exempt=space_exempted(args.file))
+                          space_exempt=space_exempted(args.file),
+                          source_file=args.file.resolve())
     except (OSError, UnicodeError, ValueError, KeyError, TypeError) as exc:
         print(f"无法校验文件：{exc}", file=sys.stderr)
         return 2

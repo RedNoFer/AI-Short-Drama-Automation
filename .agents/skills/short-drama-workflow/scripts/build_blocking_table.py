@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 import sys
 from pathlib import Path
 
@@ -81,12 +82,26 @@ def _support(char, props):
         for prop in props:
             if prop.get("kind") in {"chair", "bench"}:
                 return prop["name"]
+    support_id = char.get("supportSurfaceId")
+    if support_id:
+        surface = next((p for p in props if p.get("id") == support_id
+                        and p.get("walkableSurface") is True), None)
+        if surface:
+            return f"站在{surface['name']}顶面"
     touching = char.get("touching")
     if isinstance(touching, list) and touching:
         names = [p["name"] for p in props if p.get("id") in touching]
         if names:
             return "手触：" + "、".join(names)
     return "地面"
+
+
+def _shot_order(path: Path):
+    """Sort overlays by episode, segment, then shot number (numeric order)."""
+    match = re.match(r"^E(\d+)_SH(\d+)_S(\d+)$", path.stem)
+    if not match:
+        return (10**9, 10**9, 10**9, path.name)
+    return tuple(int(part) for part in match.groups()) + (path.name,)
 
 
 def build(directory, scene_filter=None):
@@ -99,7 +114,7 @@ def build(directory, scene_filter=None):
             bases[path.stem] = doc
         elif path.name.startswith("E"):
             overlays.append((path, doc))
-    overlays.sort(key=lambda item: (item[0].name.split("_")[1], item[0].name))
+    overlays.sort(key=lambda item: _shot_order(item[0]))
 
     rows = []
     previous = None
@@ -124,7 +139,7 @@ def build(directory, scene_filter=None):
             lines.append("；".join(bits))
         offscreen = [c["name"] for c in chars if not c.get("inFrame")]
         move = "—"
-        if previous:
+        if previous and doc.get("base") == previous.get("base"):
             prev_chars = {c["id"]: c for c in _chars(previous)}
             moved = []
             for char in chars:

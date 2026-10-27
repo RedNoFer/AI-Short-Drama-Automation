@@ -1,21 +1,58 @@
 {
-  "policy_version": 24,
+  "policy_version": 34,
   "execution": {
     "model": "isolated_stage_subagents",
     "orchestrator_holds": [
       "项目输入单",
       "阶段检查单",
       "执行账",
-      "规则传播登记表"
+      "规则传播登记表",
+      "批次台账"
     ],
     "worker_scope": "handoff_paths_only",
     "reviewer_separate_subtask": true,
     "parallel_after_master_freeze": [
       "stage3",
       "stage4",
-      "stage5_review"
+      "stage4_review_after_all_prompts"
     ],
-    "single_session_fallback": "fresh_context_per_stage_and_review"
+    "single_session_fallback": "fresh_context_per_stage_and_review",
+    "stage4_unlock": "stage1_story_reviews_and_stage2_asset_gate_and_stage3_storyboard_gate_and_stage35_fight_gate_zero_errors_all_upstream_hashes_frozen",
+    "isolated_batch_writes": true,
+    "review_record_must_list_output_sha256": true,
+    "approved_draft_sha256_must_match_current_output": true,
+    "batch_states": [
+      "待写",
+      "待评",
+      "退修",
+      "通过"
+    ],
+    "tooling": {
+      "handoff": "scripts/build_handoff.py <作品目录> --stage 3|4 --batch <范围> --out <卡> --manifest-out <manifest>（派单卡与批次清单同源生成；参数一律由输入单＋本策略构造，禁止手改）",
+      "scaffold": "scripts/scaffold_segment.py <作品目录> --batch <范围>（阶段4骨架：时间轴/参考行/镜数带从冻结逐镜表机械转录；不合规即失败关闭）",
+      "segment_lint": "scripts/lint_segment.py <草稿> --segment <片段ID>（单段即写即检；只查段内项，跨段语义由全集提示词评审覆盖）",
+      "continuity": "scripts/continuity_facts.py：阶段3生成并填全内部/04c-衔接事实.json，对冻结分镜核对；阶段4与正文交叉验并锁上游哈希。缺失/TODO/未登记/未声明变动阻断；声明转场/出入/道具放下按合法变化处理，详见references/workflow-spec.md连续性合同",
+      "ledger": "scripts/batch_ledger.py <作品目录> sync|set|status（批次四状态、版本对齐、上游失效、规范漂移；阶段4分节报告锁本批片段与共享约束，旧平铺报告仍锁整文件）",
+      "tests": "仅在修改校验器/工作流脚本或用户明确要求验证代码时运行 scripts/tests/run_all.py；不属于每个制作包的常规交付步骤",
+      "stage_gate_receipts": "validate_stage_artifacts.py 为阶段2/3/3.5生成输入哈希收据；下游派单验证收据仍对应当前版本",
+      "stage4_review_coverage": "阶段4出口门与 validate_workflow_manifest.py --strict 要求每段唯一当前验收表行，片段 ID、正文 SHA-256 匹配且结论明确通过；重复、冲突、待评、需修改、缺项、过期或未关闭缺陷均阻断"
+    },
+    "tooling_note": "2026-10-25 流程优化六项：脚本只保证机械字段不错（参数、时间轴、哈希、状态），语义质量仍由隔离评审承担；脚本 0 错误不等于内容通过。",
+    "batch_size_by_track": {
+      "wan30": [
+        1,
+        2
+      ],
+      "seedance25": [
+        2,
+        4
+      ],
+      "h3": [
+        2,
+        4
+      ]
+    },
+    "batch_size_note": "阶段3/4作者批次的建议片段数；按负载、连续性和风险调整，不拆分用户已锁定片段，不改变各轨片段时长、字符目标或硬顶；最多并行可用执行槽数减一"
   },
   "video": {
     "default_duration_sec": 30,
@@ -24,14 +61,15 @@
     "shots_band": "6-11（2026-10-19 用户调整：默认镜头带，全档通用；打斗A段一镜到底豁免，走拍点制）",
     "integer_timecodes": true,
     "prompt_max_chars": 3000,
+    "prompt_max_chars_scope": "Seedance 2.5 默认轨的公共配置；其他模型必须读取 model_profiles 对应分支，不得使用此值",
     "default_quality_tier": "tier2_xiaomo63",
     "prompt_quality_tiers": {
       "tier2_xiaomo63": {
         "label": "第二档（默认）",
         "prompt_max_chars": 3000,
         "hard_cuts": "5-10（镜头6-11；小墨6.3本身不设每30秒切镜数，区间为工作流分段口径，按题材在带内选点）",
-        "storyboard_source": "分镜层按E24小墨Skill6.3重排并逐镜自查：固定镜头≤10%且禁连续固定（例外仅重锤凝固+留白长镜）、常态镜头以极缓慢推/横移/漂移替代绝对静止、常规镜头≤30%、侧45°为叙事主力、景别不连三近景、焦段≥4种、机位角度≥6种、台词重锤后接更松景别留白镜、逐镜标注景别/焦段/机位/运镜/景深；重排后再经S18适配器编译",
-        "review_recheck": "阶段4逐条评审与阶段5独立复核都必须按E24原版把分镜视感复读检查一遍，不合格回阶段3重排",
+        "storyboard_source": "分镜层按E24小墨Skill6.3重排并逐镜自查：固定镜头≤10%且禁连续固定（例外仅重锤凝固+留白长镜）、常态运镜按职责选择推/横移/漂移，明确方向/幅度/速度；Wan不用极缓慢等无尺度措辞、常规镜头≤30%、侧45°为叙事主力、景别不连三近景、焦段≥4种、机位角度≥6种、台词重锤后接更松景别留白镜、逐镜标注景别/焦段/机位/运镜/景深；重排后再经S18适配器编译",
+        "review_recheck": "小墨6.3分镜质量在阶段3验收；阶段4只核对提示词是否忠实编译已通过的机位、景别与运镜，阶段5不重复语义评审",
         "defined": "2026-10-19 用户定义并设为默认；2026-10-22 全项目硬切带统一为 5-10，字符上限按档（第二档 3000）"
       },
       "tier1_standard": {
@@ -54,11 +92,11 @@
         "validator_note": "validate_compact_package.py --tier tier3_full_xiaomo63 已可按本档机检（4500 字符/硬切 6-10）；未指定 --tier 时按第二档 3000/5-10"
       }
     },
-    "validator_note": "validate_compact_package.py 读 video.prompt_max_chars（第二档3000）与 hard_cuts_min/max（5-10，即镜头6-11）；片段标题含「一镜到底」走 fight 分支（拍点行、行内禁硬切、豁免硬切计数、字符上限取 tier3 4500）；--tier 已实现（tier1_standard/tier2_xiaomo63/tier3_full_xiaomo63）；--model 已实现 seedance25/wan30/h3",
+    "validator_note": "validate_compact_package.py 按 --model 选择分支上限；Seedance 才读取 prompt_quality_tiers/--tier，Wan3.0 读取 model_profiles.wan30，H3 读取 model_profiles.h3；一镜到底豁免镜数/切数，但字符口径仍按登记轨，不得跨轨套用",
     "hard_cuts_note": "Seedance 2.5 轨与 Wan3.0 轨同用 5-10 次硬切（2026-10-22 用户口径）；H3 轨固定 0-6 带（app 30 秒应用片段或 official 4–15 秒单条均按此带），见 model_profiles.h3"
   },
   "workflow": {
-    "version": "v2-2026-10-23",
+    "version": "v3-2026-10-26",
     "default_branch": "seedance25",
     "model_branches": [
       "seedance25",
@@ -94,7 +132,7 @@
   },
   "model_profiles": {
     "seedance25": {
-      "label": "Seedance 2.5 轨（默认）",
+      "label": "Seedance 2.5 轨（项目缺省，仅用户未指定模型时生效）",
       "prompt_max_chars_source": "video.prompt_max_chars（分档2000/3000/4500）",
       "time_granularity": "整数秒",
       "duration": "固定30秒",
@@ -102,19 +140,18 @@
     },
     "wan30": {
       "label": "Wan3.0 轨（新增）",
-      "prompt_max_chars": 20000,
-      "target_chars": "8000-15000（用户指令；有效动作密度优先，字数不是KPI）",
+      "prompt_max_chars": 18000,
       "time_granularity": "0.5秒",
       "duration": "2-30秒弹性或智能时长",
       "duration_min": 2,
       "duration_max": 30,
       "references": "≤10图＋≤5视频(总≤15s,动作/运镜/特效参考)＋≤5音频(音色+台词驱动+口型)＋文件/网页≤1；首尾帧与参考模式互斥；视频参考只用单张单人全身塑像图（正面、占高 92%–94%），四视图仅内部存档",
-      "dialect": "@Image/@Video/@Audio绑定；<音效>点标记；图锚条款（单人塑像图，正面）；镜头前置＋2–3可见动作节点；四段结构映射Wan三模块",
-      "editing": "整改分级：台词/光线/元素级走编辑指令修复，结构/剧情级回炉重生成",
+      "dialect": "制作包四段：【参考】【公共总规范】【时间轴】【收尾】；参考只写代码＝职责、包内零图片编号；应用提交后才使用实际图/视频/音频槽位；图锚三锚、镜头前置、动作表演与结果按冻结镜头职责编译，无动作数量配额",
+      "editing": "提示词修复只改受影响正文与接口；冻结上游确有错误才登记漏检并重开最早出错产物及依赖；实际视频局部编辑沿用已冻结剧情与光源",
       "spec": "references/wan30-prompt-spec.md ＋ references/wan30-adapter-v1.0.md（编译器手册，与 S18 同构）＋ references/failure-cases.md#wan30-01（反例硬规则）",
-      "validator": "validate_compact_package.py --model wan30 已实现（字符20000/时长2-30s/0.5秒粒度）；反例专项审计 audit_wan30_antipatterns.py",
+      "validator": "validate_compact_package.py --model wan30 已实现（仅字符硬上限18000，无下限/时长2-30s/0.5秒粒度）；反例专项审计 audit_wan30_antipatterns.py",
       "anti_patterns": {
-        "video_reference": "single_cinematic_still_only",
+        "video_reference": "single_person_full_body_frontal_statue_only",
         "forbid_four_view_video_ref": true,
         "camera_clause_max_pos_ratio": 0.3,
         "still_shot_max_sec": 2.0,
@@ -128,7 +165,6 @@
         ],
         "blocking_scope": "仅拦三人以上人物物理群排；两人并肩、台词比喻、影子/倒影排列不拦",
         "require_no_lens_gaze": true,
-        "min_action_nodes_per_beat": 2,
         "max_dialogue_shot_sec": 6.0,
         "forbid_legible_text_closeup": true,
         "warm_light_terms": [
@@ -138,12 +174,14 @@
           "日出",
           "暖色逆光"
         ],
-        "public_spec_max_ratio": 0.2,
         "max_named_faces_per_shot": 3,
         "max_five_person_shot_sec": 2.0,
         "forbid_five_person_dialogue": true,
         "reflection_requires_fantasy_tag": true
-      }
+      },
+      "prompt_chars_note": "仅硬上限18000个Unicode字符（含标点、空格与换行）；无字数下限、目标带、单拍字数配额或章节篇幅占比门槛。按逐镜剧情、动作因果、运镜、情绪表演、声音、空间与出口衔接的清晰完整性评审；禁止注水，也不得为求短省略必要细节。",
+      "prompt_quality_reference": "references/wan30-prompt-spec.md#逐镜内容验收",
+      "warning_review_reference": "references/prompt-review.md#wan风险提醒处置（作者lint只拦硬错；全集strict验证当前指纹与独立证据，硬错不能豁免）"
     },
     "h3": {
       "label": "MiniMax H3 轨（官方结构化提示词）",
@@ -181,7 +219,11 @@
         "transition": "一镜到底（硬切0）",
         "structure": "拍点制：拍点行连续覆盖0-30秒，行间以运镜/焦点过渡衔接，拍点即镜内节拍而非切镜",
         "shot_band": "豁免6-11镜带",
-        "char_tier": "默认按第三档4500校验（一镜满配主要消费者）",
+        "char_limits_by_model": {
+          "seedance25": "按第三档4500上限校验（一镜满配主要消费者）",
+          "wan30": "仅硬上限18000、无字数下限；不套Seedance档",
+          "h3": "硬顶6000；不套Seedance档"
+        },
         "segment_title_marker": "片段标题含「一镜到底」"
       },
       "B_mixed": {
@@ -201,7 +243,7 @@
       "用户当前明确要求",
       "打斗战斗语法（388攻防五结果/受击反馈链/战损连续/攻击因果链/对手智能反制）",
       "小墨6.3视感（一镜到底段的拍点同样遵守景别变化与运镜多样性）",
-      "节奏骨架（388十五镜/花128二十一拍仅作参考，拍点时长受整数秒与语速≤5字/秒约束）"
+      "节奏骨架（388十五镜/花128二十一拍仅作参考，拍点时长按本轨时间粒度；中文按中文语速、泰语等原语按voice规范估时约束）"
     ],
     "excluded_from_fight_skills": [
       "388全局技术参数（8K/UE5/Rec.2020）——画风以本项目【公共总规范】为准",
@@ -215,7 +257,7 @@
       "出镜末拍收在【收尾】描述状态，禁胜负定格抢剧情收尾",
       "B级交锋镜出口状态写清（谁倒地/武器在哪）供下镜承接"
     ],
-    "machine_check": "片段标题含「一镜到底」→校验器fight分支：拍点行≥2且0-30连续、行内禁「硬切」字样、豁免硬切计数与镜数带、字符上限取tier3",
+    "machine_check": "片段标题含「一镜到底」→校验器fight分支：拍点行≥2且0-30连续、行内禁「硬切」字样、豁免硬切计数与镜数带；字符口径按登记轨（Seedance取tier3上限4500，Wan取仅硬上限18000、无字数下限，H3取硬顶6000），不得跨轨套用",
     "sources": {
       "388": "22 打斗skill/打斗skill-水墨冲击帧Skill/好好水墨冲击帧/388-da-dou/（SKILL.md＋招式库/大招库/节奏范例）",
       "hua128": "22 打斗skill/花128的2.5高燃特效打斗_30秒定制.md（二十一拍/三起两落情绪曲线/震动配额/单拍写作公式/环境地标锚）",
@@ -226,10 +268,11 @@
   "storyboard": {
     "rules_source": "E24小墨个人分镜Skill6.3原版（补充资源/小墨个人分镜SKILL6.3（豪华升级版）.md）",
     "required_at_stage3": true,
-    "review_recheck_at_stage4_and_5": true,
+    "stage4_prompt_fidelity_to_approved_storyboard": true,
+    "stage5_repeat_storyboard_semantic_review": false,
     "checks": [
       "固定镜头≤镜头总数10%且禁连续两个固定（例外仅重锤凝固+其后留白长镜，全片≤2组）",
-      "常态镜头以极缓慢推/横移/漂移的微运镜替代绝对静止",
+      "常态运镜按镜头职责选择推/横移/漂移并明确方向/幅度/速度；Wan不用极缓慢等无尺度措辞",
       "常规镜头（平视+正面/纯过肩+平稳运镜）≤30%",
       "侧45度为叙事与对话默认机位",
       "景别有变化且不连三近景，每组含大景别/特写/中景档信息交代",
@@ -244,26 +287,32 @@
   },
   "assets": {
     "character_ratio": "16:9",
+    "wan30_character_ratio": "9:16",
+    "wan30_character_ratio_note": "2026-10-25 用户定版：Wan3.0 角色资产图改用 9:16 竖版单人全身塑像图；成片视频仍按项目登记画幅（默认 16:9）。资产画幅与视频画幅解耦，互不推导。同一项目的角色卡不得横竖混用。",
+    "character_ratios": [
+      "16:9"
+    ],
     "character_layout": "front_identity_closeup + front_full + character_left_90_full + back_full",
     "scene_ratio": "16:9",
     "scene_layout": "single_panorama",
     "scene_prompt": {
       "empty_statement": "无人物|无人|0\\s*人|空镜",
       "person_pattern": "男子|女子|男人|女人|身影|行人|人群|角色|人物|人脸|的人|一位|一名|有个|盐工|工人|游客|路人|商贩|司机|警察|护士(?!站)|医生(?!办公室|诊室)|保安|服务员|顾客|小孩|孩子|老人",
-      "movable_pattern": "轿车|汽车|车辆|卡车|摩托|自行车|三轮车|船|动物|狗|猫|车(?!道|站|位|库|辙|流|行)",
-      "oily_pattern": "油润|湿反光|镜面反光|硬边高光|硬亮线|金边|光晕|丁达尔|镜头光斑|打蜡",
+      "movable_pattern": "轿车|汽车|车辆|卡车|摩托|自行车|三轮车|船|(?<!可移)动物|狗|猫|(?<!停)车(?!道|站|位|库|辙|流|行|区|体|窗|门|牌|顶|轮|胎|厢|速|间|设|架)",
+      "oily_pattern": "油润|湿反光|镜面反光|硬边高光|硬亮线|金边|光晕|丁达尔|镜头光斑|打蜡|球差|柔焦|油光|高光滚降|均匀柔和的顶",
       "realism_pattern": "真实现场照片|胶片|手机随手拍|纪实摄影|现场记录",
       "plate_marker": "场景底板",
       "fixed_marker": "固定陈设",
-      "note": "场景图=空镜底板：0 人、0 车、0 手持道具；人物由角色塑像图锁，车辆/动物/手持物由 PROP 与片段绑定承载。正向句出现人物或可移动道具（含裸「车」；车道/车站/车位/车库/车辙/车流/车行与否定句除外）判错（固定陈设须同句标注并写净距）；油润/湿反光/硬边高光/金边/光晕判错；缺无人物声明判错；缺真实感锚或场景底板职责句提醒。"
+      "note": "场景图=空镜底板：0 人、0 车、0 手持道具；人物由角色塑像图锁，车辆/动物/手持物由 PROP 与片段绑定承载。正向句出现人物或可移动道具判错；明确负向表达及其枚举宾语（如“不出现车辆、动物”）不判为画面内容；裸“车”须排除停车区域、停车设施、车道、车体等语境；固定陈设须同句标注并写净距。油润/湿反光/硬边高光/金边/光晕/球差/柔焦/油光/高光滚降/“均匀柔和的顶光”判错（室外自然光的“均匀柔和”不判）；缺无人物声明判错；缺真实感锚或场景底板职责句提醒。"
     },
     "prompt_layers": {
       "asset_forbidden": "推近|拉远|横移|跟拍|摇镜|环绕镜头|升降镜头|变焦|硬切|转场|台词|旁白|独白|喊道|哭着|笑着|愤怒地|悲伤地|表演",
       "anchor_forbidden": "领口|袖口|翻领|圆领|立领|V\\s*领|长袖|短袖|七分袖|面料|棉布|麻布|帆布|棉麻|丝绸|泰丝|雪纺|羊毛|羊绒|牛仔|拉链|纽扣|垫肩|褶皱|剪裁|版型|收腰|宽松|修身|短款|长款|内搭|裤|鞋|及膝|过膝|齐膝|哑光",
-      "video_oily": "硬亮线|硬边高光|湿反光|镜面反光|油润|打蜡",
+      "video_oily": "硬亮线|硬边高光|湿反光|镜面反光|油润|打蜡|球差|柔焦|油光|高光滚降",
+      "beauty_pattern": "细腻|通透|有光泽|丝光|水光|奶油光|唇面润",
       "scene_detail": "木纹|砖缝|墙皮|漆面|大理石|柚木|水泥|藤蔓|青苔|裂纹|斑驳|剥落|纹理|瓦片|窗棂",
       "prop_detail": "尺寸|厘米|毫米|雕花|纹样|印花|刻字|材质|漆面|金属|塑料|皮革",
-      "note": "资产图只写外观/空间/形制；视频只写镜头、动作与状态变化。资产图出现镜头/台词/表演词判错；Wan3.0 三锚写面料、剪裁、版型、内搭、裤鞋判错；视频出现硬亮线/硬边高光/湿反光/镜面反光/油润/打蜡判错；场景/道具材质词成簇（≥3 个不同词）提醒。语义重复由阶段2/4评审判定。"
+      "note": "资产图只写外观/空间/形制；视频只写镜头、动作与状态变化。资产图出现镜头/台词/表演词判错；Wan3.0 三锚写面料、剪裁、版型、内搭、裤鞋判错；视频出现硬亮线/硬边高光/湿反光/镜面反光/油润/打蜡/球差/柔焦/油光/高光滚降判错；美颜词（细腻/通透/有光泽/丝光/水光/奶油光/唇面润）提醒——这类词会让模型磨皮打油，改成哑光+颗粒感；场景/道具材质词成簇（≥3 个不同词）提醒。语义重复由阶段2/4评审判定。"
     },
     "character_prompt_groups": {
       "骨相与脸型": [
@@ -369,7 +418,7 @@
     "face_parts_min": 3,
     "character_prompt_note": "角色图片提示词的软检查项（提醒级，不判错）。分组命中即视为写到；「素颜」与「无饰品」属显式决断，同样计入。眉眼鼻唇按单项计，默认要求四者中至少三项写出相对关系（正面与侧面须为同一张脸）。检查只证明字段在场，不证明写得好——细节质量仍由阶段 2 角色美工账与独立评审承担。",
     "character_layout_wan30": "single_person_full_body_statue",
-    "character_layout_wan30_note": "Wan3.0 轨角色资产图＝16:9 单张单人全身塑像图：单人单身体、中性浅灰无缝背景、塑像式中性站姿、正面单视角（身体正对、头正、平视镜头，最多 5° 微侧）、人物占高 92%–94%、全身入画、无文字；资产卡禁止写「3/4」「不看镜头」，负向清单禁止写「看镜头」；四视图只作内部存档。其余轨仍用 character_layout 的四视图。",
+    "character_layout_wan30_note": "Wan3.0 轨角色资产图＝9:16 竖版单张单人全身塑像图：单人单身体、中性浅灰无缝背景、塑像式中性站姿、正面单视角（身体正对、头正、平视镜头，最多 5° 微侧）、人物占高 92%–94%、全身入画、无文字；成片视频仍按项目登记画幅（默认 16:9），资产画幅不跟随视频画幅改变。资产卡禁止写「3/4」「不看镜头」，负向清单禁止写「看镜头」；四视图只作内部存档。其余轨仍用 character_layout 的四视图（16:9）。",
     "character_requires": [
       "全身",
       "下装",
@@ -454,15 +503,23 @@
       "表演与动作可拍性",
       "空间与上下文衔接",
       "声音来源口型与声线",
-      "小墨6.3视感复读（机位配比/固定镜头/运镜/景别焦段景深/重锤后留白）",
-      "硬规与字符时间轴"
+      "已批准分镜视感与打斗路由是否被正确编译",
+      "硬规与字符时间轴",
+      "提示词分层与资产去重"
     ],
     "evidence_required_for_findings": true,
     "require_reviewer_identity_record": true,
-    "full_coverage_each_round": true,
+    "full_coverage_each_round": false,
+    "initial_full_coverage_required": true,
+    "initial_review_scope": "全部提示词与跨片段接口",
+    "repair_recheck_scope": "变更项、相邻接口及受影响共享依赖；未变哈希保留原结论",
     "rollback_to_last_passing_version": true,
-    "rerun_all_gates_after_regeneration": true,
+    "rerun_all_gates_after_regeneration": false,
+    "rerun_affected_gates_after_regeneration": true,
+    "stage4_review_timing": "全部提示词草稿完成后先运行整套分支包校验和原文覆盖率；机械硬错清零后进行一轮独立全覆盖评审，Wan风险提醒在本轮留证并由阶段4严格门验证；写作期间仅作者自查和段内/机械校验",
+    "stage5_semantic_review": false,
     "max_rollback_cycles_before_escalation": 2,
+    "escalation_owner": "总控定位根因并更换修复方法；仅需变更用户锁定目标或缺少必要用户决策时询问用户",
     "total_rounds_soft_cap": 4,
     "continuity": {
       "required_dimension": true,
@@ -482,8 +539,9 @@
     "stage_reviews": {
       "stage1": 3,
       "stage2": 1,
-      "stage45": 1,
-      "note": "阶段1 在事件/分集、逐集剧本、片段规划三个交接点各一次；阶段2 资产母版与声线母版一次（落盘 内部/03b-资产评审.md，阶段出口门强制）；阶段4 完成后、阶段5 导出前一次全量对抗性评审。全部由与起草方隔离的新上下文承担。"
+      "stage4_prompt_set": 1,
+      "stage5_semantic": 0,
+      "note": "阶段1在事件/分集、逐集剧本、片段规划三个交接点各一次；阶段2资产母版与声线母版一次（落盘 内部/03b-资产评审.md，阶段出口门强制）；阶段3分镜批次独立评审并合并后跑全局门；阶段3.5打斗路由随同分镜评审包核对；阶段4全部提示词完成后做一轮独立全覆盖评审；阶段5只运行导出与机械集成检查。"
     },
     "stage2_review_artifact": "内部/03b-资产评审.md"
   },

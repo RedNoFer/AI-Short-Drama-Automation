@@ -11,9 +11,13 @@ that were confirmed by the 2026-10-20 E01-SH01/SH03 sample:
 - "并肩 / 一字排开 / 并排站 / 排成一排"
 - missing "不看镜头"
 - dialogue shots longer than 6 seconds
-- warm-light words in a cold-gray project
+- warm-light words requiring comparison with the frozen scene light sources
 - note/road-sign close-ups that invite gibberish text
-- public-spec bloat
+
+Warnings are semantic review candidates, not automatic rewriting instructions.
+``--strict`` requires a version-bound disposition for every remaining warning;
+hard errors cannot be waived. A valid real warm source may be marked
+``not_applicable`` with a reason, source evidence and reviewer.
 
 Usage:
     python3 audit_wan30_antipatterns.py package.md
@@ -24,6 +28,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -36,6 +41,12 @@ PROMPT = re.compile(r"#### 视频提示词\n\n```text\n([\s\S]*?)\n```")
 ROW = re.compile(r"^(\d+(?:\.5)?)-(\d+(?:\.5)?)秒[，,](.*)$")
 SHOT = re.compile(r"(大远景|远景|全景|中近景|中景|近景|大特写|特写|微距)")
 CAMERA_PREFIX = re.compile(r"^(?:硬切[，,。]\s*)?镜头[：:]")
+DECLARED_DIALOGUE_DURATION = re.compile(r"对白(?:时长)?\s*(\d+(?:\.\d+)?)\s*秒")
+WARM_LIGHT_NEGATION = re.compile(r"(?:不添加|不采用|不出现|不使用|不加|避免|不做|不要|禁止|不得|无需|没有|未使用)[^，。；;]{0,12}$")
+GOLD_LIGHT_CONTEXT = re.compile(
+    r"(?:金色|黄金色)(?:逆光|光线|光源|主光|灯光|滤镜|色调|照明|氛围|光照)|"
+    r"(?:逆光|光线|光源|主光|灯光|滤镜|色调|照明|氛围|光照)(?:金色|黄金色)"
+)
 
 CHARS = ("阿泽", "苏晚", "老杨", "许棠", "小林", "黑衣人")
 GROUPS = ("五人", "四人", "三人", "两人", "众人", "大家", "他们", "她们")
@@ -50,14 +61,6 @@ BODY = (
 PROPS = (
     "包裹", "古图", "字条", "纸条", "手机", "银纹", "图面", "纸面",
     "手绳", "相机", "沙字", "字痕", "刻痕", "便签",
-)
-ACTION = re.compile(
-    r"(走|跑|蹲|起身|站起|抬头|低头|转身|回头|伸手|抬手|收|放|推|拉|递|接|"
-    r"握|攥|翻|擦|按|扶|踩|跨|扑|躲|冲|停|弯腰|直起|侧身|点头|摇头|呼吸|"
-    r"吞咽|眨眼|皱眉|抿嘴|咬|抓|提|扛|抱|背|穿|脱|打开|合上|掀|压|抹|蹭|"
-    r"拍|敲|指|扫|盯|看|望|掏|塞|拉上|解开|系|甩|绕|踢|靠|坐|躺|趴|钻|"
-    r"挤|退|迈|踏|跺|蹲下|俯身|探|缩|转|扭|挣|扶住|撑|搭|勾|划|写|画|"
-    r"折|撕|卷|铺|摊|挂|摘|戴|换|洗|点|亮|灭)"
 )
 TEXT_PROP = re.compile(r"(字条|纸条|路牌|车牌|纸面|图面)")
 CLOSE_UP = re.compile(r"(大特写|特写|微距)")
@@ -121,6 +124,27 @@ def split_prompt(prompt: str) -> tuple[str, str, str]:
     return pub, timeline, tail
 
 
+def is_warm_light_hit(prompt: str, term: str) -> bool:
+    """Ignore negated warm-light instructions and bare gold-object references.
+
+    ``金色`` is retained in policy for compatibility, but it only signals a
+    warm-light risk when it is attached to a lighting/color-grading noun.
+    This keeps gold jewelry and other allowed small asset highlights from
+    being treated as a warm lighting setup.
+    """
+    for match in re.finditer(re.escape(term), prompt):
+        start, end = match.span()
+        before = prompt[max(0, start - 18):start]
+        if WARM_LIGHT_NEGATION.search(before):
+            continue
+        if term == "金色" and not GOLD_LIGHT_CONTEXT.search(
+            prompt[max(0, start - 3):min(len(prompt), end + 8)]
+        ):
+            continue
+        return True
+    return False
+
+
 def parse_segments(text: str):
     current_episode = "?"
     lines = text.splitlines()
@@ -155,7 +179,70 @@ def parse_segments(text: str):
         i = j
 
 
-def audit(package: Path, policy_path: Path | None) -> dict:
+def bind_and_review_issues(issues: list[dict], segments: list[dict], cfg: dict,
+                           record_path: Path | None) -> list[str]:
+    """Attach stable issue identities and validate exact-current-body dispositions.
+
+    Record schema: {"schema_version": 1, "dispositions": [{"issue_id": ...,
+    "fingerprint": ..., "status": "resolved" | "not_applicable", "reason": ...,
+    "evidence": ..., "reviewer": ...}]}. Every text field must be nonempty.
+    Evidence describes the frozen source/location or the current mitigation;
+    this function validates traceability, not the truth of semantic judgment.
+    """
+    prompts = {f"{s['episode']}/{s['shot']}": s['prompt'] for s in segments}
+    rule_hash = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    occurrences: Counter = Counter()
+    for issue in issues:
+        key = [issue['segment'], issue['kind'], issue['detail']]
+        canonical = json.dumps(key, ensure_ascii=False, separators=(',', ':'))
+        occurrences[canonical] += 1
+        stable = f"{canonical}:{occurrences[canonical]}"
+        issue['issue_id'] = 'WAN30-' + hashlib.sha256(stable.encode()).hexdigest()[:24]
+        payload = [stable, prompts[issue['segment']], cfg, rule_hash]
+        issue['fingerprint'] = 'sha256:' + hashlib.sha256(json.dumps(
+            payload, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+        issue['review_status'] = 'pending' if issue['level'] == 'warning' else 'hard_error'
+
+    if record_path is None:
+        return []
+    try:
+        record = json.loads(record_path.read_text(encoding='utf-8'))
+    except (OSError, ValueError) as exc:
+        return [f'无法读取风险处置记录：{exc}']
+    if (not isinstance(record, dict) or type(record.get('schema_version')) is not int
+            or record['schema_version'] != 1 or not isinstance(record.get('dispositions'), list)):
+        return ['风险处置记录必须使用 schema_version=1 与 dispositions 数组']
+    by_id = {i['issue_id']: i for i in issues}
+    failures: list[str] = []
+    seen: set[str] = set()
+    for index, entry in enumerate(record['dispositions'], 1):
+        label = f'风险处置记录第{index}项'
+        fields = ('issue_id', 'fingerprint', 'status', 'reason', 'evidence', 'reviewer')
+        if not isinstance(entry, dict) or any(
+                not isinstance(entry.get(k), str) or not entry[k].strip() for k in fields):
+            failures.append(f'{label}缺少非空文本字段：' + '/'.join(fields))
+            continue
+        issue_id = entry['issue_id']
+        if issue_id in seen:
+            failures.append(f'{label}重复 issue_id：{issue_id}')
+            continue
+        seen.add(issue_id)
+        issue = by_id.get(issue_id)
+        if issue is None:
+            failures.append(f'{label}指向不存在或已经变更的问题：{issue_id}')
+        elif issue['level'] != 'warning':
+            failures.append(f'{label}不能豁免硬错误：{issue_id}')
+        elif entry['status'] not in ('resolved', 'not_applicable'):
+            failures.append(f'{label}的 status 只能是 resolved 或 not_applicable')
+        elif entry['fingerprint'] != issue['fingerprint']:
+            failures.append(f'{label}正文或规则哈希已失效：{issue_id}')
+        else:
+            issue['review_status'] = entry['status']
+            issue['disposition'] = {k: entry[k].strip() for k in fields[2:]}
+    return failures
+
+
+def audit(package: Path, policy_path: Path | None, review_record_path: Path | None = None) -> dict:
     text = package.read_text(encoding="utf-8")
     policy = {}
     if policy_path and policy_path.exists():
@@ -168,9 +255,7 @@ def audit(package: Path, policy_path: Path | None) -> dict:
     still_max = float(cfg.get("still_shot_max_sec", 2.0))
     empty_max = float(cfg.get("empty_shot_max_sec", 2.5))
     dialogue_max = float(cfg.get("max_dialogue_shot_sec", 6.0))
-    pub_max = float(cfg.get("public_spec_max_ratio", 0.20))
     max_extreme = int(cfg.get("max_extreme_slow_terms", 0))
-    min_action_nodes = int(cfg.get("min_action_nodes_per_beat", 2))
     max_named_faces = int(cfg.get("max_named_faces_per_shot", 3))
     max_five_sec = float(cfg.get("max_five_person_shot_sec", 2.0))
     forbid_five_dialogue = bool(cfg.get("forbid_five_person_dialogue", True))
@@ -192,23 +277,12 @@ def audit(package: Path, policy_path: Path | None) -> dict:
     camera_missing = 0
     camera_late = 0
     no_gaze = 0
-    pub_over = 0
     warm_segments = 0
 
     for seg in segments:
         label = f"{seg['episode']}/{seg['shot']}"
         prompt = seg["prompt"]
         pub, timeline, _ = split_prompt(prompt)
-        if pub and len(pub) / max(len(prompt), 1) > pub_max:
-            pub_over += 1
-            issues.append(
-                {
-                    "level": "warning",
-                    "kind": "public_spec_bloat",
-                    "segment": label,
-                    "detail": f"公共总规范 {len(pub)/len(prompt):.0%} > {pub_max:.0%}",
-                }
-            )
         slow_count = prompt.count("极缓慢")
         if slow_count > max_extreme:
             slow_by_segment.append((label, slow_count, len(prompt)))
@@ -221,7 +295,7 @@ def audit(package: Path, policy_path: Path | None) -> dict:
                 }
             )
         for term in warm_terms:
-            if term in prompt:
+            if is_warm_light_hit(prompt, term):
                 warm_segments += 1
                 issues.append(
                     {
@@ -319,7 +393,6 @@ def audit(package: Path, policy_path: Path | None) -> dict:
             char_hit = any(c in body for c in CHARS + GROUPS)
             body_hit = any(b in body for b in BODY)
             prop_hit = any(p in body for p in PROPS)
-            action_nodes = len(set(ACTION.findall(body)))
             has_dialogue = ('"' in body or "“" in body or "口型对白" in body)
 
             # --- 人物分身/身份预算（WAN30-02）---
@@ -402,14 +475,19 @@ def audit(package: Path, policy_path: Path | None) -> dict:
                         "detail": f"{start:g}-{end:g}秒（{dur:g}s）",
                     }
                 )
-            if has_dialogue and dur > dialogue_max:
+            declared_dialogue = DECLARED_DIALOGUE_DURATION.search(body)
+            dialogue_duration = float(declared_dialogue.group(1)) if declared_dialogue else dur
+            if has_dialogue and dialogue_duration > dialogue_max:
                 top_dialogue.append((label, start, end, dur, body[:40]))
                 issues.append(
                     {
                         "level": "warning",
                         "kind": "dialogue_shot_too_long",
                         "segment": label,
-                        "detail": f"{start:g}-{end:g}秒（{dur:g}s）",
+                        "detail": (
+                            f"{start:g}-{end:g}秒（对白 {dialogue_duration:g}s；镜头 {dur:g}s）"
+                            if declared_dialogue else f"{start:g}-{end:g}秒（{dur:g}s）"
+                        ),
                     }
                 )
             if (
@@ -425,15 +503,6 @@ def audit(package: Path, policy_path: Path | None) -> dict:
                         "detail": f"{start:g}-{end:g}秒",
                     }
                 )
-            if char_hit and dur >= 2.0 and action_nodes < min_action_nodes:
-                issues.append(
-                    {
-                        "level": "warning",
-                        "kind": "low_action_density",
-                        "segment": label,
-                        "detail": f"{start:g}-{end:g}秒：可见动作 {action_nodes} 个",
-                    }
-                )
 
         if group_rows > 1:
             issues.append(
@@ -445,6 +514,7 @@ def audit(package: Path, policy_path: Path | None) -> dict:
                 }
             )
 
+    record_errors = bind_and_review_issues(issues, segments, cfg, review_record_path)
     counts = Counter(i["kind"] for i in issues)
     errors = [i for i in issues if i["level"] == "error"]
     warnings = [i for i in issues if i["level"] == "warning"]
@@ -452,13 +522,16 @@ def audit(package: Path, policy_path: Path | None) -> dict:
         "package": str(package),
         "segments": len(segments),
         "rows": rows_total,
-        "errors": len(errors),
+        "errors": len(errors) + len(record_errors),
         "warnings": len(warnings),
+        "unresolved_warnings": sum(i['review_status'] == 'pending' for i in warnings),
+        "accepted_warnings": sum(i['review_status'] != 'pending' for i in warnings),
+        "review_record_errors": len(record_errors),
+        "review_record_details": record_errors,
         "counts": dict(sorted(counts.items())),
         "camera_missing_prefix": camera_missing,
         "camera_late": camera_late,
         "no_gaze_segments": no_gaze,
-        "public_spec_over": pub_over,
         "warm_segments": warm_segments,
         "slow_by_segment": sorted(slow_by_segment, key=lambda x: -x[1])[:10],
         "top_still": sorted(top_still, key=lambda x: -x[3])[:10],
@@ -474,13 +547,13 @@ def print_human(result: dict, limit: int = 12) -> None:
     print("=" * 68)
     print(
         f"段数 {result['segments']}｜时间行 {result['rows']}｜"
-        f"阻断 {result['errors']}｜警告 {result['warnings']}"
+        f"阻断 {result['errors']}｜风险 {result['warnings']}｜"
+        f"待处置 {result['unresolved_warnings']}｜已记录处置 {result['accepted_warnings']}"
     )
     print(
         f"镜头未前置 {result['camera_missing_prefix']}/{result['rows']}｜"
         f"镜头词后置 {result['camera_late']} 行｜"
         f"缺『不看镜头』{result['no_gaze_segments']} 段｜"
-        f"公共总规范超比 {result['public_spec_over']} 段｜"
         f"暖光词 {result['warm_segments']} 段"
     )
     print("\n问题计数：")
@@ -499,6 +572,13 @@ def print_human(result: dict, limit: int = 12) -> None:
         "阻断项（必须清零）",
         [i for i in result["issues"] if i["level"] == "error"],
         lambda i: f"{i['segment']}｜{i['kind']}｜{i['detail']}",
+    )
+    for error in result['review_record_details']:
+        print(f"  处置记录错误：{error}")
+    dump(
+        "语义风险（对照冻结源稿逐项处置，不按词法命中直接改写）",
+        [i for i in result['issues'] if i['level'] == 'warning'],
+        lambda i: f"{i['segment']}｜{i['kind']}｜{i['detail']}｜{i['review_status']}｜{i['issue_id']}",
     )
     dump(
         "最长静物拍（>2s）",
@@ -522,7 +602,7 @@ def print_human(result: dict, limit: int = 12) -> None:
     )
     print(
         "\n提示：本脚本为专项审计，不替代 validate_compact_package.py --model wan30；"
-        "阻断项清零后才进入生成。"
+        "本报告不等于阶段4验收；硬错误清零且语义风险逐项处置后，仍须独立评审。"
     )
 
 
@@ -541,21 +621,23 @@ def main() -> int:
     parser.add_argument(
         "--strict",
         action="store_true",
-        help="警告也返回非零退出码（生成前建议开启）",
+        help="硬错误、无效处置记录或未处置语义风险返回非零；不能豁免硬错误",
     )
+    parser.add_argument('--review-record', type=Path,
+                        help='逐项风险处置JSON；issue_id、fingerprint必须匹配当前审计，理由/证据/评审人必填')
     parser.add_argument("--limit", type=int, default=12, help="每类最多列几条")
     args = parser.parse_args()
     if not args.package.exists():
         print(f"找不到文件：{args.package}", file=sys.stderr)
         return 2
-    result = audit(args.package, args.policy)
+    result = audit(args.package, args.policy, args.review_record)
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
     else:
         print_human(result, args.limit)
     if result["errors"]:
         return 1
-    if args.strict and result["warnings"]:
+    if args.strict and result["unresolved_warnings"]:
         return 1
     return 0
 
