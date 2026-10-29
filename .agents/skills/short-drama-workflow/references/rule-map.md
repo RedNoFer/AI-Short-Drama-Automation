@@ -47,6 +47,7 @@
 | R36 | **阶段3分镜完整覆盖阶段1计划**：逐镜片段 ID 与 `02a-结构化拍摄剧本.json` 的 episode/segment 清单一一对应；缺段、重复、计划外或只提交部分片段均阻断 | workflow-spec.md ★；阶段1/分镜映射在故事档案与 `02a` | SKILL（阶段3）、execution-checklist、multi-agent-execution、执行账 | `validate_stage_artifacts.py --stage 3`＋`test_stage_gates.py` | PROC-07 |
 | R37 | **字数与校验器失败关闭**：提示词长度只取项目登记轨的 profile；Wan 长度策略缺字段时不得回退 Seedance；`--tier` 仅限 Seedance；旧式 `validate_delivery.py` 拒绝 Wan/H3/未登记模型 | policy.json 分支 profile、model-branch-matrix.md ★ | AGENTS、SKILL、validation-contract、multi-agent-execution、failure-cases | `validate_compact_package.py`、`validate_delivery.py`＋分支回归测试 | PROC-07 |
 | R38 | **剧情保留与敏感内容表达**：固定事件/责任/结果/线索；用含蓄且可执行的画面保留观众接收依据；跨语言与参考检查、锁定台词不默改；改变冻结展示先同步受影响上游；输入/输出报错与实际验证分开，不保证审核 | content-expression.md ★ | SKILL（阶段3/4）、prompt-review、execution-checklist、handoff-template；build_handoff 阶段3及三轨阶段4必读 | 无关键词黑名单；生成派单卡检查必读路径与R38；语义由既有阶段3/4独立评审 | CONTENT-01 |
+| R39 | **画面文字纪律（公共层统一，禁任何字幕）**：Wan3.0 含台词或心声的片段，【公共总规范】必须有一行以 `画面文字纪律：` 开头的统一句（逐字取自 wan30-adapter 4.2 第 5 块；全帧无字幕/双语/翻译/标题/时间码/角标/水印，对白以声音＋口型、画外与听筒段同样无字幕）；不得只写禁止项否定 token，不得并进禁止项清单或逐镜改写 | wan30-adapter-v1.0 §4.2/§8 ★、wan30-prompt-spec 模块二/注释、compact-import 阶段4 | prompt-review、execution-checklist（阶段4）、SKILL 阶段4 | 阶段4独立评审必查＋样片抽帧核对；机检 `画面文字纪律：` 行存在性待回填补 | TEXT-03 |
 
 ## 文件职责速查（改文件时先判断它是不是定义文件）
 
