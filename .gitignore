@@ -10,7 +10,15 @@
 生成输出/
 整改输出/
 outputs/
+output/
+输出/
 视频拆解_*/
+
+# 项目产物图片与本地素材归档（工作产物，不属于规范源文件）
+/*.png
+TikTok素材归档_*/
+27 电影感分镜skill/
+.workbuddy-ai/
 
 # 演示视频（体积大，不进仓库；改用 GitHub Release 附件分发）
 *.mp4
