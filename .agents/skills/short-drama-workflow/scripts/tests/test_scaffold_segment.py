@@ -67,6 +67,23 @@ def make_project(tmp: Path, storyboard: str | None = None, track: str = "wan30")
 
 
 class ScaffoldTests(unittest.TestCase):
+    def test_summary_columns_do_not_create_shots(self):
+        summary = "| 段 | 镜数 | 硬切 |\n|---|---|---|\n| SH20 | 7 | 6 |\n"
+        rows = scaffold.parse_table(shots([("0", "30")]) + "\n" + summary)
+        self.assertEqual([r["shot"] for r in rows], ["S01"])
+
+    def test_duplicate_shot_aliases_in_one_table_fail(self):
+        table = "| 镜 | 时间 |\n|---|---|\n| S1 | 0-15 |\n| S01 | 15-30 |\n"
+        with self.assertRaisesRegex(ValueError, "镜号重复"):
+            scaffold.parse_table(table)
+
+    def test_separate_design_and_timing_tables_merge_same_shot(self):
+        table = ("| 镜 | 时间 |\n|---|---|\n| S1 | 0-30 |\n\n"
+                 "| 镜号 | 景别 |\n|---|---|\n| S01 | 中景 |\n")
+        rows = scaffold.parse_table(table)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual((rows[0]["time"], rows[0]["size"]), ("0-30", "中景"))
+
     def test_wan30_skeleton_axis(self):
         with tempfile.TemporaryDirectory() as d:
             work = make_project(Path(d))

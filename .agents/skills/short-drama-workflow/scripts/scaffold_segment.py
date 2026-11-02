@@ -79,10 +79,15 @@ def parse_table(block: str) -> list[dict]:
         cols: dict[str, int] = {}
         for idx, name in enumerate(header):
             for key, names in aliases.items():
+                if key == "shot" and not re.fullmatch(
+                    r"(?:镜|镜头|镜号|镜头号|镜头编号|镜头\s*ID)(?:[（(][^）)]*[）)])?", name, re.I
+                ):
+                    continue  # “镜数／镜对／具名说话人/镜”等汇总列不是镜号。
                 if key not in cols and any(alias in name for alias in names):
                     cols[key] = idx
         if "shot" not in cols:
             continue
+        seen: set[str] = set()
         for line in lines[2:]:
             cells = [c.strip() for c in line.strip("|").split("|")]
             if len(cells) < len(header):
@@ -97,6 +102,10 @@ def parse_table(block: str) -> list[dict]:
                 shot = f"S{int(shot):02d}"
             if not re.fullmatch(r"S\d{1,2}", shot):
                 continue
+            shot = f"S{int(shot[1:]):02d}"
+            if shot in seen:
+                raise ValueError(f"同一逐镜表镜号重复：{shot}；不得用后行覆盖前行")
+            seen.add(shot)
             row = merged.setdefault(shot, {
                 "shot": shot, "time": "", "size": "", "lens": "", "angle": "",
                 "move": "", "depth": "", "content": "", "act": "",
@@ -227,7 +236,7 @@ def render_segment(seg_id: str, block: str, track: str) -> str:
         lead = "" if i == 0 else "硬切，"
         hint = "／".join(x for x in (row["size"], row["lens"], row["angle"], row["move"]) if x)
         out.append(f"{fmt_sec(start)}-{fmt_sec(end)}秒，{lead}{TODO} {hint}".rstrip())
-    out += [f"【收尾】{TODO} 出口状态与下一片段入口（站位/朝向/道具状态/伤情/情绪未完话头）", "```", ""]
+    out += [f"【收尾】{TODO} 只复述本片段末镜已成立的站位、朝向、道具状态、伤情和情绪，不新增镜头或动作。", "```", ""]
     voices = [r for r in rows if r["content"] and re.search(r"[「」“”\"]", r["content"])]
     if voices:
         out += [f"<!-- 本片段 {len(voices)} 镜含台词：含人声音频的片段，公共层须有一行「声线锁定：」，"

@@ -1,0 +1,164 @@
+{
+  "schema": "wan30-official-data/1",
+  "checked_on": "2026-10-30",
+  "scope": "阿里云Wan3.0 API规格快照；实际入口更新时重新核对。项目制作策略另读policy.json。",
+  "sources": {
+    "api": "https://help.aliyun.com/zh/model-studio/wan3-video-generation-api-reference",
+    "prompt": "https://help.aliyun.com/zh/model-studio/wan3-video-generation-prompt-guide",
+    "manual": "https://alidocs.dingtalk.com/i/nodes/qnYMoO1rWxrkmoj2IjExdZLBJ47Z3je9",
+    "examples": "https://alidocs.dingtalk.com/i/nodes/jb9Y4gmKWrx9eo4dCql9LlbYJGXn6lpz?utm_scene=team_space"
+  },
+  "models": [
+    "wan3.0-video",
+    "wan3.0-video-prime"
+  ],
+  "prompt_max_chars": 20000,
+  "media_limits": {
+    "first_frame": {
+      "max_count": 1
+    },
+    "last_frame": {
+      "max_count": 1
+    },
+    "reference_image": {
+      "max_count": 10
+    },
+    "reference_video": {
+      "max_count": 5,
+      "single_min_seconds": 1,
+      "single_max_seconds": 15,
+      "total_max_seconds": 15
+    },
+    "reference_audio": {
+      "max_count": 5,
+      "single_min_seconds": 1,
+      "single_max_seconds": 15,
+      "total_max_seconds": 15
+    },
+    "file": {
+      "max_count": 1
+    },
+    "link": {
+      "max_count": 1
+    }
+  },
+  "media_combinations": {
+    "frame_types": [
+      "first_frame",
+      "last_frame"
+    ],
+    "reference_types": [
+      "reference_image",
+      "reference_video",
+      "reference_audio",
+      "file",
+      "link"
+    ],
+    "frames_exclude_references": true,
+    "last_frame_requires_first_frame": true,
+    "file_link_combined_max_count": 1,
+    "reference_numbering": "图、视频、音频各自在同类型中按media实际顺序从1计数；资产代码与槽位号分开"
+  },
+  "duration": {
+    "no_video_min_seconds": 2,
+    "no_video_max_seconds": 30,
+    "integer_seconds": true,
+    "default_seconds": 5,
+    "smart_value": -1,
+    "input_video_plus_output_max_seconds": 30
+  },
+  "output": {
+    "resolutions": [
+      "480P",
+      "720P",
+      "1080P"
+    ],
+    "default_resolution": "1080P",
+    "ratios": [
+      "adaptive",
+      "21:9",
+      "16:9",
+      "4:3",
+      "1:1",
+      "3:4",
+      "9:16"
+    ],
+    "default_ratio": "adaptive",
+    "fps": 30,
+    "audio_default": true
+  },
+  "prompt_extend_default": true,
+  "file_or_link_requires_prompt_extend": true,
+  "notes": [
+    "0.5秒是本地镜头时间轴粒度，不是API输出duration可用小数的依据。",
+    "模型端20000字符与制作包18000字符分层检查；本次不变更用户已锁定的项目字数上限。",
+    "智能时长不预先伪造确定输出长度；含视频时仍受输入加输出总预算限制。",
+    "延长任务的API时长设置与Prompt指南说明需结合实际返回结果核对；不照搬Wan2.7输入包含在输出中的示例算法。",
+    "文件字节、图像像素、媒体解码、帧率、登录状态和供应商返回另行验证；本数据不证明素材已上传。"
+  ],
+  "input_specs": {
+    "image": {
+      "formats": [
+        "jpeg",
+        "jpg",
+        "png",
+        "bmp",
+        "webp"
+      ],
+      "alpha_channel_supported": false,
+      "side_min_pixels": 240,
+      "side_max_pixels": 8000,
+      "aspect_ratio_max": 8,
+      "file_max_mb": 20
+    },
+    "video": {
+      "formats": [
+        "mp4",
+        "mov"
+      ],
+      "fps_min": 16,
+      "side_min_pixels": 240,
+      "side_max_pixels": 4096,
+      "aspect_ratio_max": 8,
+      "file_max_mb": 100
+    },
+    "audio": {
+      "formats": [
+        "wav",
+        "mp3"
+      ],
+      "file_max_mb": 15
+    },
+    "file": {
+      "formats": [
+        "docx",
+        "doc",
+        "xlsx",
+        "xls",
+        "pptx",
+        "ppt",
+        "pdf",
+        "txt",
+        "key",
+        "pages",
+        "numbers",
+        "md"
+      ],
+      "file_max_mb": 100,
+      "page_max": 50,
+      "page_checked_formats": [
+        "pdf",
+        "docx",
+        "doc",
+        "pptx",
+        "ppt",
+        "key",
+        "pages"
+      ]
+    },
+    "link": {
+      "public_without_login": true
+    },
+    "verification_scope": "数据快照包含输入格式与文件限制；独立请求检查器仅检查其scope列明内容，不探测文件本体。"
+  }
+}

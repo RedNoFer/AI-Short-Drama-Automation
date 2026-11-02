@@ -59,6 +59,8 @@ import workflow_common as wc  # noqa: E402
 import batch_ledger as ledger  # noqa: E402
 import validate_workflow_manifest as workflow_manifest  # noqa: E402
 import continuity_facts as continuity  # noqa: E402
+import quality_evidence  # noqa: E402
+import validate_space_blocking as blocking  # noqa: E402
 
 CHARS = ("阿泽", "苏晚", "老杨", "许棠", "小林", "黑衣人")
 # 通用角色名（供其他项目用）：取资产区「角色」资产名的主名
@@ -782,6 +784,15 @@ def main() -> int:
     for st in stages:
         fn = {"2": stage2, "3": stage3, "3.5": stage35, "4": stage4}[st]
         errs, warns = fn(workdir, names)
+        if st in quality_evidence.FILES:
+            errs.extend(quality_evidence.check(workdir, st))
+        if st == "3":
+            space_dir = workdir / "内部" / "04b-站位图"
+            space_paths = sorted(space_dir.glob("SCENE_*.json")) + sorted(space_dir.glob("E*_SH*_S*.json"))
+            if space_paths:
+                geometry_errors, geometry_warnings = blocking.run(space_paths)
+                errs.extend(f"站位几何：{e}" for e in geometry_errors)
+                warns.extend(f"站位几何：{w}" for w in geometry_warnings)
         if st == "2":
             review_errors: list[str] = []
             workflow_manifest.check_review_stage1(workdir / "内部", True, review_errors, [])

@@ -187,9 +187,10 @@ def stage_gate_inputs(workdir: Path, stage: str) -> dict[str, str]:
     """返回阶段门依赖文件哈希；排除后续提示词草稿，支持阶段门收据复用。"""
     internal = Path(workdir) / "内部"
     patterns = ["00-*.md", "01-*.md", "01c-*.md", "02-*.md", "02a-*.json",
-                "03-*.md", "03b-*.md"]
+                "03-*.md", "03a-*.md", "03b-*.md", "03c-资产逐项验收.json"]
     if stage in {"3", "3.5"}:
         patterns.append("04-*.md")
+        patterns.append("04e-逐镜空间验收.json")
         patterns.append("04c-衔接事实.json")
     paths: set[Path] = set()
     for pattern in patterns:

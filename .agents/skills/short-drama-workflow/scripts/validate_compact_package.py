@@ -8,6 +8,8 @@ import json
 import re
 import sys
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import prompt_contracts
 
 ASSET = re.compile(r"^### (角色|场景|道具|线索) ([A-Za-z][A-Za-z0-9_-]*)｜(.+)$")
 ASSET_PROMPT_METADATA = re.compile(
@@ -293,9 +295,12 @@ def check_prompt(prompt: str, episode: str, shot: str, duration: int, bindings: 
     if tier is not None and model != "seedance25":
         errors.append(f"{label}: --tier 仅适用于 Seedance 2.5，不能传给 {model} 分支")
         return stats
+    errors.extend(prompt_contracts.check(prompt, model, label))
     if model == "h3":
         return check_h3_prompt(prompt, episode, shot, duration, bindings, policy,
                                errors, warnings, extra_fields=extra_fields)
+    usage = character_usage({"【时间轴】": prompt.split("【时间轴】", 1)[-1].split("【收尾】", 1)[0]}, char_names or {})
+    voice_only = usage["speakers"] - usage["used"]
     # WAN30-04：包内不得写编号。编号由应用按上传顺序生成，离线包写死必然错位。
     if model == "wan30" and IMAGE_NUMBER.search(prompt):
         errors.append(
@@ -316,6 +321,8 @@ def check_prompt(prompt: str, episode: str, shot: str, duration: int, bindings: 
             clause = re.search(r"(?:【角色一致性】|角色一致性[：:])([^【\n]*)", prompt)
             missing = []
             for code in bindings["角色"]:
+                if code in voice_only:
+                    continue  # 仅画外发声者仍查身份绑定和声线，不要求画面外观。
                 name = _base_name(char_names.get(code, ""))
                 if not name:
                     continue
@@ -564,6 +571,8 @@ def check_prompt(prompt: str, episode: str, shot: str, duration: int, bindings: 
     # 识别锚必须与角色资产图同源：图文各说一套就是换装的第二入口（WAN30-04）
     if model == "wan30" and char_names and asset_prompts:
         for _code, _name in char_names.items():
+            if _code in voice_only:
+                continue
             _base = _base_name(_name)
             _m = re.search(rf"{re.escape(_base)}(?:（[^）]*）)?[：:]([^；。\n]+)", public_block)
             if not _m:
@@ -992,14 +1001,20 @@ def parse_structure(source: str) -> dict:
             elif field == "asset_prompt":
                 current_asset["prompt"] = value
             else:
-                current_shot["prompts"][field] = value
+                if field in current_shot["prompts"]:
+                    errors.append(f"第 {index} 行：片段 {current_shot['code']} 的「{field}」重复；每个字段只能出现一次，检查是否缺少片段标题")
+                else:
+                    current_shot["prompts"][field] = value
             field = None
             index = end + 1
             continue
         binding_match = BINDING.fullmatch(line)
         if current_shot and binding_match:
             codes = [item for item in re.split(r"[,，、\s]+", binding_match[2]) if item]
-            current_shot["bindings"][binding_match[1]] = codes
+            if binding_match[1] in current_shot["bindings"]:
+                errors.append(f"第 {index} 行：片段 {current_shot['code']} 的「{binding_match[1]}」绑定行重复；检查是否缺少片段标题")
+            else:
+                current_shot["bindings"][binding_match[1]] = codes
             continue
         errors.append(f"第 {index} 行无法识别：{line[:60]}")
     return {"assets": assets, "episodes": episodes, "errors": errors}

@@ -12,7 +12,7 @@
 | R2 | 镜头行自然语言：Seedance按画面动作开场规则；Wan按R20镜头前置；两轨均禁箭头/次数缩写/代码批注 | compact-import.md（含改写对照表） | SKILL 阶段4、prompt-review、validation-contract、policy.prompt_style | validate_compact_package（opening 正则 + literal 拦截） | PROC-03 |
 | R3 | 七类声音来源标签 + 「口型」+ 直引号 + 字秒比与跨切申报 | compact-import.md | SKILL 阶段4、prompt-review、validation-contract、policy.voice | validate_compact_package（标签/口型/速率） | PROC-03 |
 | R4 | 声线母版（3–5 锚点、反差、旁白/混叠/低语）+ 公共层「声线锁定：」机械派生、跨片段逐字一致 | voice-and-dubbing.md ★；母版实例存内部/03 | SKILL（输入/阶段2/4/5/边界）、execution-checklist（2/4/5/触发点）、compact-import、prompt-review、asset-image-production、delivery-contract、project-brief、quality-inputs、validation-contract、模板注释、openai.yaml、multi-agent-execution | validate_compact_package（锁定存在/说话覆盖/跨片一致），policy.voice | PROC-04 |
-| R5 | 上下文衔接：镜/片段/集的站位、视线、道具状态链、场景光向、情绪话头；收尾写下一片段入口 | compact-import.md（第5条） | SKILL（阶段3源稿验收、阶段4提示词编译/评审、阶段5机械集成）、prompt-review（衔接维度+空间专项）、story-evaluation、runtime-planning、multi-agent-execution | continuity_facts.py＋阶段3/4门；语义评审复核因果与表达 | SPACE-01、SYNC-01 |
+| R5 | 上下文衔接：镜/片段/集的站位、视线、道具状态链、场景光向、情绪话头；全条提示词只写本片段内容，收尾只写当前末镜出口；下一片段入口留内部合同和下一段首镜 | compact-import.md（第5条） | SKILL（阶段3源稿验收、阶段4提示词编译/评审、阶段5机械集成）、prompt-review（衔接维度+空间专项）、story-evaluation、runtime-planning、multi-agent-execution | continuity_facts.py＋阶段3/4门；语义评审复核因果与表达 | SPACE-01、SYNC-01 |
 | R6 | 分阶段评审：上游各自在交接点验收；阶段 4 全集提示词完成后做一轮独立全覆盖评审；阶段 5 只做机械集成检查；修复时按哈希和依赖范围定向复验 | prompt-review.md | SKILL（阶段门/1/5/速度）、execution-checklist（6）、compact-import、delivery-contract、multi-agent-execution、policy.review、story-evaluation | 无（流程闸） | PROC-02 |
 | R7 | 小说原文块逐字来自用户源文件（支持 docx）；差异须授权登记；部分章节须声明范围 | compact-import.md | SKILL 阶段5、execution-checklist（阶段5）、prompt-review（上游交接）、project-brief（源文件登记）、multi-agent-execution | validate_novel_coverage.py（命中≥0.99/覆盖≥0.95） | — |
 | R8 | Seedance/Wan 默认 30 秒片段、6–11 镜、5–10 硬切；Seedance 整数秒/分档 2000·3000·4500，Wan 0.5 秒/仅硬上限18000、无字数下限；H3 见 R25/R30 | runtime-planning.md；数值在 policy.video | SKILL（输入/阶段3/边界）、compact-import、prompt-review、validation-contract、delivery-contract | validate_compact_package（时间轴/硬切/字符） | PROC-02 |
@@ -32,6 +32,10 @@
 | R21b | **包内零编号**：任何轨的交付包不得写 `@ImageN`/`@图片N`；参考块只用 `代码＝职责`（代码后不重复名称），正文用姓名；编号归应用按上传槽位生成 | asset-reference-binding.md ★；compact-import.md | wan30-prompt-spec §三、wan30-adapter §4.1、model-branch-matrix、模板 | `validate_compact_package.py`（WAN30-04，各轨全局） | WAN30-04 |
 | R22 | **Wan 反例硬规则**：静物≤2s、空镜≤2.5s、删极缓慢、禁三人以上人物群排、每段不看镜头、对话单镜≤6s、道具时序、文字物理规避、项目画风/实有光源、公共层与镜头层分工及语义去重（无篇幅占比门槛） | wan30-prompt-spec.md §十一★；failure-cases.md WAN30-01 | wan30-adapter §4.3/§6/§11、compact-import、prompt-review | audit_wan30_antipatterns.py＋validate_compact_package --model wan30 | WAN30-01 |
 | R23 | **人物分身预防**：参考图单人、每镜≤3张正脸、4+人拆镜、五人全景≤2s且无台词、人数锁定句、普通反射不映人、幻境复刻标 `幻境层` | wan30-prompt-spec.md §十一·人物分身专项★；failure-cases.md WAN30-02 | wan30-adapter §4.3/§11/§12、asset-image-production、prompt-review、SKILL 阶段2/4 | audit_wan30_antipatterns.py（identity_overload/five_person_*/group_dialogue_overload/group_shot_budget/reflection_ambiguity） | WAN30-02 |；多人镜头的正文名单写法统一按Wan规范的五人镜头裁决执行，完整身份与位置对应保存在冻结站位合同
+| R40 | **人物进出与参考一致性**：多人关键镜头明确相关人物画内外、位置与入出；核对实际单人图和入口追加描述；画外声源保留绑定与声线 | wan30-prompt-spec 人物进出 ★、WAN30-02 | wan30-adapter、execution-checklist、prompt-review、SKILL 阶段3/4 | 阶段3／4独立评审＋逐项证据门；人数／引用部分机检；实际样片另核 | WAN30-02 千金重生 |
+| R41 | **视觉母版逐资产继承**：逐 ID 核对时代地域、角色身份生活背景、场景环境、道具用途及共同光色材质；饰件冲突退回资产设计 | asset-image-production 视觉母版验收 ★、STYLE-01 | SKILL 阶段2、execution-checklist、prompt-review | 阶段2逐资产独立评审＋证据覆盖与版本硬门；实际图片另核，脚本不判断地域美术 | STYLE-01 |
+| R42 | **空间语义验收门**：风险场景基底、逐镜画内外／支撑／道具与相邻接口、正文及实际参考逐项有证据和哈希；人工评审缺失或冲突阻断 | space-semantics-gate.md ★ | SKILL、execution-checklist、prompt-review、workflow-spec | 逐项证据门＋阶段3已有站位几何校验；语义及样片另验，脚本不证明真实可拍 | SPACE-01/SYNC-01 |
+| R43 | 当前片段正文硬门：全条生成正文禁止跨片段场景及制作指令；逐片段重复字段或绑定行不得覆盖 | compact-import.md | SKILL、prompt-review、execution-checklist | validate_compact_package 拦截明确标记、重复字段／绑定；显式制作指令不能靠加引号规避；隐含跨段和原文对白由人工核对 | 当前片段边界审计 2026-10-29 |
 | R24 | **反例投喂契约**：最小信息集（提示词全文/生成参数/成片/偏差/期望/修正版/入口）、批量目录约定、五步处理（归类合并→偏差/原因/修订/验证分栏→接入检查点→回写规范并逐项核对→回执对照表）、边界（单次生成错误≠提示词缺陷、不固化个案配置、复盘不启动生成） | failure-intake-contract.md ★ | failure-cases（接收与更新）、SKILL（反例回收）、rule-map | 无（流程闸） | 全部案例类 |
 | R25 | **MiniMax H3 轨**：官方结构化正文（base 三字段／Ref2VA 六段式）、片段时长沿用应用单位（官方 4–15 秒为模型单条输出上限）、毫秒切点 `At MM:SS.mmm`、首镜无时间戳、资产→`<Subject N>`/`<Picture N>`/`<Video N>`/`<Audio N>` 标签、台词 `<d>[语言]…</d>`＋`(S1)`、不写四段结构与「硬切，」行、正文硬顶 6000 字符/过简提醒 1200（官方未设字符上限，官方生产范例 2500–4540 字符；Ref2VA 的 detailed_description 按官方 350–500 词）、硬切带 0–6 | 官方原文 `25 minimax H3官方skill/skills/h3-prompt-writing/`（不改写）；本地适配 `.agents/skills/minimax-h3-adapter/SKILL.md`★；compact-import.md「MiniMax H3 轨」节；素材引用规则 `.agents/skills/minimax-h3-adapter/references/asset-reference.md`；数值 policy.model_profiles.h3 | SKILL（阶段3/4/5 三轨）、workflows.md W17、execution-checklist（阶段3/4/5）、prompt-review、project-brief、runtime-planning、story-evaluation、handoff-template、asset-image-production（参考素材前置）、voice-and-dubbing、micro-expression-layer、fight-router、validation-contract | validate_compact_package --model h3（回归 scripts/tests/test_h3_validator.py）；audit_h3_prompt.py（回归 .agents/skills/minimax-h3-adapter/scripts/tests/test_audit_h3_prompt.py） | — |
 | R26 | **阶段 2 资产独立评审**：与起草方隔离的新上下文审身份锚点/角色美工账/声线母版/持物链/空间基底，不读下游；结论落盘 `内部/03b-资产评审.md`，缺记录即阶段门判错 | execution-checklist.md（执行方式 7／阶段2 落盘）★ | SKILL（阶段门/阶段2）、multi-agent-execution（派单表/纪律 9）、policy.review.stage_reviews、asset-image-production | validate_stage_artifacts（stage2 查评审记录存在且 ≥60 字符） | CHARACTER-01、PROC-04 |
@@ -47,13 +51,17 @@
 | R36 | **阶段3分镜完整覆盖阶段1计划**：逐镜片段 ID 与 `02a-结构化拍摄剧本.json` 的 episode/segment 清单一一对应；缺段、重复、计划外或只提交部分片段均阻断 | workflow-spec.md ★；阶段1/分镜映射在故事档案与 `02a` | SKILL（阶段3）、execution-checklist、multi-agent-execution、执行账 | `validate_stage_artifacts.py --stage 3`＋`test_stage_gates.py` | PROC-07 |
 | R37 | **字数与校验器失败关闭**：提示词长度只取项目登记轨的 profile；Wan 长度策略缺字段时不得回退 Seedance；`--tier` 仅限 Seedance；旧式 `validate_delivery.py` 拒绝 Wan/H3/未登记模型 | policy.json 分支 profile、model-branch-matrix.md ★ | AGENTS、SKILL、validation-contract、multi-agent-execution、failure-cases | `validate_compact_package.py`、`validate_delivery.py`＋分支回归测试 | PROC-07 |
 | R38 | **剧情保留与敏感内容表达**：固定事件/责任/结果/线索；用含蓄且可执行的画面保留观众接收依据；跨语言与参考检查、锁定台词不默改；改变冻结展示先同步受影响上游；输入/输出报错与实际验证分开，不保证审核 | content-expression.md ★ | SKILL（阶段3/4）、prompt-review、execution-checklist、handoff-template；build_handoff 阶段3及三轨阶段4必读 | 无关键词黑名单；生成派单卡检查必读路径与R38；语义由既有阶段3/4独立评审 | CONTENT-01 |
-| R39 | **画面文字纪律（公共层统一，禁任何字幕）**：Wan3.0 含台词或心声的片段，【公共总规范】必须有一行以 `画面文字纪律：` 开头的统一句（逐字取自 wan30-adapter 4.2 第 5 块；全帧无字幕/双语/翻译/标题/时间码/角标/水印，对白以声音＋口型、画外与听筒段同样无字幕）；不得只写禁止项否定 token，不得并进禁止项清单或逐镜改写 | wan30-adapter-v1.0 §4.2/§8 ★、wan30-prompt-spec 模块二/注释、compact-import 阶段4 | prompt-review、execution-checklist（阶段4）、SKILL 阶段4 | 阶段4独立评审必查＋样片抽帧核对；机检 `画面文字纪律：` 行存在性待回填补 | TEXT-03 |
+| R39 | **画面文字纪律（公共层统一，禁任何字幕）**：Wan3.0 含对白、心声或旁白的片段，【公共总规范】必须有一行以 `画面文字纪律：` 开头的统一句（逐字取自 wan30-adapter 4.2 第 5 块；全帧无字幕/双语/翻译/标题/时间码/角标/水印，对白以声音＋口型、画外与听筒段同样无字幕）；不得只写禁止项否定 token，不得并进禁止项清单或逐镜改写 | wan30-adapter-v1.0 §4.2/§8 ★、wan30-prompt-spec 模块二/注释、compact-import 阶段4 | prompt-review、execution-checklist（阶段4）、SKILL 阶段4 | validate_compact_package／lint_segment：含人声Wan公共层统一句逐字、位置与唯一性硬检；实际字幕由样片核对 | TEXT-03 |
+
+| R44 | **逐项质量验收证据门**：阶段2逐资产、阶段3逐镜、阶段4逐提示词从实际产物派生完整清单；独立评审给具体判断、原文引文与版本；缺项、待评、伪引文、过期、自签或开放缺陷阻断，图片和成片另验 | quality-evidence-contract.md ★；quality_evidence.py字段定义 | SKILL、workflow-spec、execution-checklist、prompt-review、space-semantics-gate、policy v35 | quality_evidence.py；validate_stage_artifacts阶段2／3／4强制；build_handoff复核上游证据与版本；test_quality_evidence／test_prompt_contracts | 2026-10-29 漏检整改 |
+
+| R45 | **Wan官方数据与按任务编译**：官方快照与policy项目值分层；四段为compact_package容器，内部按官方要素，公共层先总体描述；文字修订／视频编辑／延长分流；direct_prompt不套项目包镜数／三锚／跨片段禁语；按真实上传素材验数量、时长与互斥 | wan30-official-rules.md★、wan30-official-data.json★、wan30-task-compiler.md★ | SKILL、Wan规范／适配器、prompt-review、execution-checklist、model-branch-matrix、build_handoff阶段4Wan必读 | validate_wan30_request.py（离线真实请求与声明元数据）；原包校验仅用于制作包；test_wan30_request、test_build_handoff | 2026-10-30官方资料接入，未新增样片效果实证 |
 
 ## 文件职责速查（改文件时先判断它是不是定义文件）
 
 - `SKILL.md`：流程总纲，只写阶段顺序与原则，规则细节链接到定义文件；避免在此复制规则全文（复制=未来漂移点）。
 - `policy.json`：全部机器可读默认值；改默认值升版本号。
-- `references/*`：R1–R31 的定义与执行细则。
+- `references/*`：规则的定义与执行细则。
 - `scripts/`：确定性检查；新硬规则先问能否机检，能就进脚本并补 `scripts/tests/` 正反用例。
 - `assets/drama-compact-package-template.md`：导入端结构模板，注释只写格式不写项目值。
 - `agents/openai.yaml`：入口默认提示词，只做引导，不承载规则。
@@ -87,3 +95,8 @@
 
 | 2026-10-26 | policy v34：规则边界闭合 | Wan统一四段、取消动作数量配额、镜头前置与光源继承不再互相冲突；warning以当前指纹和独立证据处置，硬错不可豁免；阶段3连续性事实先验收并冻结、阶段4正文交叉验；中文与泰语估时分开，原语估时依据归声线规范。只修受影响产物及接口，不重跑无关已通过内容 | SKILL、分支矩阵、Wan规范/适配器、workflow-spec、execution-checklist、multi-agent-execution、prompt-review、policy、相关既有脚本 |
 | 2026-10-27 | R38 新增 | 将保留剧情事实的敏感内容表现适配接入分镜/提示词编写、同轮语义评审与自动派单；区分原语台词保留风险和输入/输出审核，不将候选词写成通用禁词。未改模型默认值、未增加关键词机检或评审轮次 | content-expression.md（新）、SKILL、prompt-review、execution-checklist、handoff-template、failure-cases、build_handoff.py、test_build_handoff.py |
+
+
+| 2026-10-29 | R39–R44 | policy v35：逐资产／逐镜／逐提示词证据门、实际范围派生与哈希锁；Wan字幕统一句硬检；跨段指令及重复字段拒绝；阶段3接入站位几何校验 | quality-evidence-contract、quality_evidence、prompt_contracts、validate_stage_artifacts、build_handoff、workflow_common、workflow-spec、SKILL、checklist、prompt-review与正反回归 |
+
+| 2026-10-30 | R45，policy v36 | 接入官方机器快照与知识定位；保留18,000／四段项目契约，在公共层增加总体描述及官方要素映射；分离文字修订、视频编辑和延长，补真实请求离线检查，自动派单增加Wan专用必读；未修改其他模型格式和用户作品 | SKILL、policy、Wan规范／适配器、新增官方与任务参考、prompt-review、execution-checklist、分支矩阵、build_handoff、请求检查及回归 |

@@ -34,6 +34,7 @@ SCRIPTS = Path(__file__).resolve().parent
 SKILL = SCRIPTS.parent
 sys.path.insert(0, str(SCRIPTS))
 import workflow_common as wc  # noqa: E402  口径唯一实现（改造六）
+import quality_evidence  # noqa: E402
 
 
 def _sha256(path: Path) -> str:
@@ -163,6 +164,9 @@ def check_stage_unlock(workdir: Path, stage: str) -> list[str]:
 
     required_gates = ["2"] if stage == "3" else ["2", "3", "3.5"]
     errors.extend(_gate_receipt_errors(workdir, required_gates))
+    errors.extend(quality_evidence.check(workdir, "2"))
+    if stage == "4":
+        errors.extend(quality_evidence.check(workdir, "3"))
 
     if stage == "4":
         ledger_path = internal / "批次台账.json"
@@ -239,6 +243,8 @@ UPSTREAM = {
 MUST_READ = {
     "3": [
         "references/story-evaluation.md",
+        "references/space-semantics-gate.md",
+        "references/quality-evidence-contract.md",
         "references/content-expression.md",
         "../../../补充资源/小墨个人分镜SKILL6.3（豪华升级版）.md",
         "../zhifeiji-workflow-router/references/workflows.md#w14",
@@ -248,6 +254,8 @@ MUST_READ = {
     "4": [
         "references/prompt-layering.md",
         "references/prompt-review.md",
+        "references/space-semantics-gate.md",
+        "references/quality-evidence-contract.md",
         "references/content-expression.md",
         "references/voice-and-dubbing.md",
         "references/compact-import.md",
@@ -261,7 +269,9 @@ MUST_READ = {
 TRACK_MUST_READ = {
     "4": {
         "seedance25": ["../../../18 ZHIFEIJI-2.5分镜提示词SKILL/Seedance2.5_通用提示词生成适配器_v1.0.md"],
-        "wan30": ["references/wan30-prompt-spec.md", "references/wan30-adapter-v1.0.md"],
+        "wan30": ["references/wan30-official-rules.md", "references/wan30-official-data.json",
+                  "references/wan30-task-compiler.md", "references/wan30-prompt-spec.md",
+                  "references/wan30-adapter-v1.0.md"],
         "h3": ["../minimax-h3-adapter/SKILL.md", "../minimax-h3-adapter/references/asset-reference.md",
                "../../../25 minimax H3官方skill/skills/h3-prompt-writing/references/base-en.txt",
                "../../../25 minimax H3官方skill/skills/h3-prompt-writing/references/ref-en.txt"],
@@ -275,7 +285,7 @@ RULES = {
         "seedance25": ["R1 四段结构", "R2 自然语言镜头行", "R3 声音来源标签", "R4 声线锁定", "R8 时长/切数/字符档", "R10 包内零编号", "R31 分层与去重"],
         "wan30": ["R1 四段结构", "R2 自然语言（Wan 按 R20 镜头前置）", "R3 声音来源标签", "R4 声线锁定", "R8 Wan 字符口径", "R20 镜头前置",
                   "R21b 包内零编号", "R22 Wan 反例硬规则", "R23 人物分身预防", "R31 分层与去重", "R32 参考图预算", "R33 锚词全包同源",
-                  "R34 服装锚三项", "R35 文字物理规避"],
+                  "R34 服装锚三项", "R35 文字物理规避", "R45 官方数据与项目策略分层、按任务编译"],
         "h3": ["R25 H3 官方字段结构", "R4 声线锚点写进说话人描述", "R31 分层与去重"],
     },
 }
@@ -338,7 +348,9 @@ def build_card(workdir: Path, stage: str, batch: str) -> str:
     must_read = list(MUST_READ[stage]) + TRACK_MUST_READ.get(stage, {}).get(track, [])
     rules = RULES[stage] if stage == "3" else RULES[stage][track]
     if stage == "4":
-        rules = rules + ["R38 剧情保留与敏感内容表达"]
+        rules = rules + ["R38 剧情保留与敏感内容表达", "R39 字幕统一句（Wan轨）", "R40 人物进出", "R41 视觉母版继承", "R42 空间语义验收", "R43 当前片段正文", "R44 逐项评审证据门"]
+    if stage == "3":
+        rules = rules + ["R40 人物进出", "R42 空间语义验收", "R44 逐项评审证据门"]
     snapshot = (f"policy v{policy.get('policy_version', '?')}（policy.json SHA-256 {_sha256(SKILL / 'policy.json')[:16]}…）")
 
     lines = [

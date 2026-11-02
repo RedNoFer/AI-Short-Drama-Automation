@@ -1,5 +1,5 @@
 {
-  "policy_version": 34,
+  "policy_version": 36,
   "execution": {
     "model": "isolated_stage_subagents",
     "orchestrator_holds": [
@@ -33,9 +33,10 @@
       "segment_lint": "scripts/lint_segment.py <草稿> --segment <片段ID>（单段即写即检；只查段内项，跨段语义由全集提示词评审覆盖）",
       "continuity": "scripts/continuity_facts.py：阶段3生成并填全内部/04c-衔接事实.json，对冻结分镜核对；阶段4与正文交叉验并锁上游哈希。缺失/TODO/未登记/未声明变动阻断；声明转场/出入/道具放下按合法变化处理，详见references/workflow-spec.md连续性合同",
       "ledger": "scripts/batch_ledger.py <作品目录> sync|set|status（批次四状态、版本对齐、上游失效、规范漂移；阶段4分节报告锁本批片段与共享约束，旧平铺报告仍锁整文件）",
-      "tests": "仅在修改校验器/工作流脚本或用户明确要求验证代码时运行 scripts/tests/run_all.py；不属于每个制作包的常规交付步骤",
+      "tests": "修改工作流脚本后运行 scripts/tests/run_all.py；测试使用独立临时项目和模拟评审证据，不给真实作品自动签通过",
       "stage_gate_receipts": "validate_stage_artifacts.py 为阶段2/3/3.5生成输入哈希收据；下游派单验证收据仍对应当前版本",
-      "stage4_review_coverage": "阶段4出口门与 validate_workflow_manifest.py --strict 要求每段唯一当前验收表行，片段 ID、正文 SHA-256 匹配且结论明确通过；重复、冲突、待评、需修改、缺项、过期或未关闭缺陷均阻断"
+      "stage4_review_coverage": "阶段4出口门与 validate_workflow_manifest.py --strict 要求每段唯一当前验收表行，片段 ID、正文 SHA-256 匹配且结论明确通过；重复、冲突、待评、需修改、缺项、过期或未关闭缺陷均阻断",
+      "quality_evidence": "quality_evidence.py <作品目录> --stage 2|3|4 --init 只派生待评清单；独立评审填写后由阶段出口门校验逐项覆盖、引文、版本锁及未关闭缺陷；脚本不证明判断正确"
     },
     "tooling_note": "2026-10-25 流程优化六项：脚本只保证机械字段不错（参数、时间轴、哈希、状态），语义质量仍由隔离评审承担；脚本 0 错误不等于内容通过。",
     "batch_size_by_track": {
@@ -142,13 +143,13 @@
       "label": "Wan3.0 轨（新增）",
       "prompt_max_chars": 18000,
       "time_granularity": "0.5秒",
-      "duration": "2-30秒弹性或智能时长",
+      "duration": "无视频输入2–30整数秒或智能时长；含视频参考时另验输入总长与输出预算；0.5秒只指本地镜头时间轴",
       "duration_min": 2,
       "duration_max": 30,
-      "references": "≤10图＋≤5视频(总≤15s,动作/运镜/特效参考)＋≤5音频(音色+台词驱动+口型)＋文件/网页≤1；首尾帧与参考模式互斥；视频参考只用单张单人全身塑像图（正面、占高 92%–94%），四视图仅内部存档",
-      "dialect": "制作包四段：【参考】【公共总规范】【时间轴】【收尾】；参考只写代码＝职责、包内零图片编号；应用提交后才使用实际图/视频/音频槽位；图锚三锚、镜头前置、动作表演与结果按冻结镜头职责编译，无动作数量配额",
-      "editing": "提示词修复只改受影响正文与接口；冻结上游确有错误才登记漏检并重开最早出错产物及依赖；实际视频局部编辑沿用已冻结剧情与光源",
-      "spec": "references/wan30-prompt-spec.md ＋ references/wan30-adapter-v1.0.md（编译器手册，与 S18 同构）＋ references/failure-cases.md#wan30-01（反例硬规则）",
+      "references": "≤10参考图＋≤5参考视频（合计≤15秒）＋≤5参考音频（合计≤15秒）；file/link二选一≤1；首尾帧与参考类型互斥。单人塑像图是本项目角色图策略，不是所有视频输入只能用图片。",
+      "dialect": "compact_package保留四段：【参考】【公共总规范】【时间轴】【收尾】；公共层先写总体描述，按官方要素组织各段；包内用资产代码，实际上传后按媒体类型分别编号。direct_prompt按任务使用官方自由公式，不套四段、镜数带、三锚。",
+      "editing": "区分提示词文字修订、实际视频编辑、视频延长：文字仅修受影响正文和接口；编辑定位对象及保留项并允许必要光学/接触联动；延长另算方向、原片边界、新内容与总时长。冻结上游有误才定向重开。",
+      "spec": "references/wan30-official-rules.md＋wan30-task-compiler.md＋wan30-prompt-spec.md＋wan30-adapter-v1.0.md；本地反例策略限定在既有短剧制作包。",
       "validator": "validate_compact_package.py --model wan30 已实现（仅字符硬上限18000，无下限/时长2-30s/0.5秒粒度）；反例专项审计 audit_wan30_antipatterns.py",
       "anti_patterns": {
         "video_reference": "single_person_full_body_frontal_statue_only",
@@ -179,9 +180,12 @@
         "forbid_five_person_dialogue": true,
         "reflection_requires_fantasy_tag": true
       },
-      "prompt_chars_note": "仅硬上限18000个Unicode字符（含标点、空格与换行）；无字数下限、目标带、单拍字数配额或章节篇幅占比门槛。按逐镜剧情、动作因果、运镜、情绪表演、声音、空间与出口衔接的清晰完整性评审；禁止注水，也不得为求短省略必要细节。",
+      "prompt_chars_note": "本地制作包硬上限18000个Unicode字符（含标点、空格与换行），无字数下限、目标带、单拍字数配额或章节篇幅占比门槛；官方API字符上限另从official_data读取，真实提交还须计入应用拼接文字。按逐镜剧情、动作因果、摄影、表演、声音与衔接的清晰完整性评审，不注水也不省略必要细节。",
       "prompt_quality_reference": "references/wan30-prompt-spec.md#逐镜内容验收",
-      "warning_review_reference": "references/prompt-review.md#wan风险提醒处置（作者lint只拦硬错；全集strict验证当前指纹与独立证据，硬错不能豁免）"
+      "warning_review_reference": "references/prompt-review.md#wan风险提醒处置（作者lint只拦硬错；全集strict验证当前指纹与独立证据，硬错不能豁免）",
+      "official_data": "references/wan30-official-data.json",
+      "official_rules": "references/wan30-official-rules.md",
+      "task_compiler": "references/wan30-task-compiler.md"
     },
     "h3": {
       "label": "MiniMax H3 轨（官方结构化提示词）",

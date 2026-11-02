@@ -110,6 +110,25 @@ class BuildHandoffTests(unittest.TestCase):
             self.assertIn("人物微表情表演skill.zip#micro-expression-video-generator/references/tempo-density-guide.md", card)
             self.assertIn("人物微表情表演skill.zip#micro-expression-video-generator/references/video-prompt-guardrails.md", card)
 
+    def test_wan_official_references_are_dispatched_only_for_wan_stage4(self):
+        """新规范必须进入真实派单，且不能传播到其他模型。"""
+        required = ("wan30-official-rules.md", "wan30-official-data.json", "wan30-task-compiler.md")
+        for brief, stage, expected in ((BRIEF, "4", True), (BRIEF, "3", False),
+                                       (BRIEF_SEEDANCE, "4", False), (BRIEF_H3, "4", False)):
+            with self.subTest(stage=stage, brief=brief), tempfile.TemporaryDirectory() as d:
+                work = make_project(Path(d), brief)
+                (work / "内部" / "02a-结构化拍摄剧本.json").write_text(
+                    json.dumps({"segments": [{"episode": 1}]}), encoding="utf-8")
+                card = handoff.build_card(work, stage, "E01-SH01")
+                for name in required:
+                    self.assertEqual(name in card, expected, name)
+                self.assertEqual("R45" in card, expected)
+                if expected:
+                    manifest = handoff.build_manifest(work, stage, "E01-SH01", card)
+                    self.assertEqual(manifest["char_budget"]["max_chars"], 18000)
+                    self.assertIsNone(manifest["char_budget"]["min_chars"])
+                    self.assertEqual(manifest["card_sha256"], handoff.wc.sha256_text(card))
+
     def test_seedance_card_has_tier(self):
         with tempfile.TemporaryDirectory() as d:
             work = make_project(Path(d), BRIEF_SEEDANCE)

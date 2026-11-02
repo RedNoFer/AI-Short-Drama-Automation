@@ -73,7 +73,7 @@ EPISODE_TMPL = """## 剧集 {ep}｜测试集{n}
 【公共总规范】统一3D国漫画风。【角色一致性】阿泽：黑色碎短发／左手腕旧手绳／深灰机能外套。{pad}{lock}
 【时间轴】
 {rows}
-【收尾】阿泽走远，下一片段承接。
+【收尾】阿泽在路上走远。
 ```
 """
 
@@ -105,6 +105,7 @@ def make_package(*, lock: str = LOCK, rows: str | None = None,
         body += EPISODE_TMPL.format(ep="E02", sh="SH01", n=2, lock=second_lock or lock, rows=rows2, suffix="", dur=dur, pad=pad)
     if ratio != "16:9":
         body = body.replace("生成16:9横版角色资产图", f"生成{ratio}竖版角色资产图")
+    body = body.replace("【时间轴】", validator.prompt_contracts.wan_text_rule() + "\n【时间轴】")
     return body
 
 
@@ -832,6 +833,30 @@ class SequelValidatorTests(unittest.TestCase):
             model="wan30", warnings=warnings,
             asset_codes={"CHAR_01", "CHAR_02"}, asset_prompts={})
         self.assertFalse(any("WAN30-03" in e for e in errors), errors)
+
+
+class VoiceOnlyAnchorTests(unittest.TestCase):
+    def check_phone_prompt(self, appears=False):
+        rows = GOOD_ROWS.replace(
+            '阿泽站在雨里，镜头平视不动，他作口型对白、口型同步，说："你好。"',
+            '阿泽闭口听手机，小林（画外延续，手机听筒，无口型）"你好。"')
+        if appears:
+            rows = rows.replace("风吹过路面，他侧头听声。", "小林站在阿泽身旁，两人转头看门口。")
+        parsed = validator.parse_structure(make_package(rows=rows, lock="声线锁定：小林＝26岁男声，中低音。"))
+        prompt = parsed["episodes"][0]["shots"][0]["prompts"]["视频提示词"]
+        prompt = prompt.replace("CHAR_01=阿泽外观锁定；", "CHAR_01=阿泽外观锁定；CHAR_02=听筒声源身份；")
+        errors, warnings = [], []
+        validator.check_prompt(prompt, "E01", "SH01", 30,
+            {"角色": ["CHAR_01", "CHAR_02"], "场景": ["LOC_01"]}, POLICY, errors,
+            char_names={"CHAR_01": "阿泽", "CHAR_02": "小林"}, model="wan30", warnings=warnings,
+            asset_prompts={"CHAR_01": parsed["assets"][0]["prompt"], "CHAR_02": "高马尾，红外套。"})
+        return errors
+
+    def test_phone_voice_does_not_require_visual_anchor(self):
+        self.assertEqual(self.check_phone_prompt(), [])
+
+    def test_role_that_appears_still_requires_visual_anchor(self):
+        self.assertTrue(any("小林" in e and "三锚" in e for e in self.check_phone_prompt(appears=True)))
 
 
 if __name__ == "__main__":
