@@ -674,7 +674,7 @@ class SequelValidatorTests(unittest.TestCase):
         self.assertTrue(any("鞋" in e for e in result["errors"]), result["errors"])
 
     def test_wan30_anchor_mismatch_rejected(self):
-        """正文三锚与资产图不同源（词说裙子、图是工装裤）判错。"""
+        """正文识别锚与资产图不同源（词说裙子、图是工装裤）判错。"""
         prompt = (
             "【参考】CHAR_01＝身份与服装唯一基准（单人塑像图，全片不变）。\n"
             "【公共总规范】全段1拍0次硬切。阿泽：栗色长卷发／米色半身裙／白色风衣。\n"
@@ -734,7 +734,7 @@ class SequelValidatorTests(unittest.TestCase):
         self.assertTrue(any("同款" in e for e in result["errors"]), result["errors"])
 
     def test_wan30_missing_three_anchors_rejected(self):
-        """WAN30-06：绑定角色没有三锚条款，远景全身会脱离参考图。"""
+        """WAN30-06：绑定角色没有指针条款，远景全身会脱离参考图。"""
         pkg = make_package(ratio="9:16", rows=WAN_ROWS, pad=WAN_PAD).replace(
             "【角色一致性】阿泽：黑色碎短发／左手腕旧手绳／深灰机能外套。", "")
         result = validator.validate(pkg, POLICY, model="wan30", space_exempt=True)
@@ -856,7 +856,7 @@ class VoiceOnlyAnchorTests(unittest.TestCase):
         self.assertEqual(self.check_phone_prompt(), [])
 
     def test_role_that_appears_still_requires_visual_anchor(self):
-        self.assertTrue(any("小林" in e and "三锚" in e for e in self.check_phone_prompt(appears=True)))
+        self.assertTrue(any("小林" in e and "身份外观遵循" in e for e in self.check_phone_prompt(appears=True)))
 
 
 if __name__ == "__main__":

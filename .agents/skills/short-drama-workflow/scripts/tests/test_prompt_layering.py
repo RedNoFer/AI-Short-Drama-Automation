@@ -3,7 +3,7 @@
 
 运行：python3 scripts/tests/test_prompt_layering.py
 覆盖 validate_compact_package.py 的 check_prompt_layers：资产图写镜头/台词、
-Wan3.0 三锚写面料/剪裁、视频硬亮线，以及场景/道具材质词成簇提醒。
+Wan3.0 一致性条款写面料/剪裁、视频硬亮线，以及场景/道具材质词成簇提醒。
 """
 
 from __future__ import annotations
@@ -65,7 +65,7 @@ class PromptLayeringTests(unittest.TestCase):
             "【时间轴】\n0-5秒，硬切，镜头：中景。"
         )
         errors, _ = run(parsed(video_prompt=video))
-        self.assertTrue(any("三锚写了「圆领」" in e for e in errors), errors)
+        self.assertTrue(any("一致性条款写了「圆领」" in e for e in errors), errors)
 
     def test_wan30_anchor_rejects_fabric(self):
         video = (
@@ -73,7 +73,7 @@ class PromptLayeringTests(unittest.TestCase):
             "【时间轴】\n0-5秒，硬切，镜头：中景。"
         )
         errors, _ = run(parsed(video_prompt=video))
-        self.assertTrue(any("三锚写了「棉麻」" in e for e in errors), errors)
+        self.assertTrue(any("一致性条款写了「棉麻」" in e for e in errors), errors)
 
     def test_wan30_anchor_clean_passes(self):
         video = (

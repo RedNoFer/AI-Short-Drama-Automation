@@ -315,8 +315,7 @@ def check_prompt(prompt: str, episode: str, shot: str, duration: int, bindings: 
             errors.append(
                 f"{label}: 参考里仍把角色卡写成四视图设定板——Wan3.0 已改为单人全身塑像图，"
                 "四视图不得进视频参考（WAN30-05）")
-        # WAN30-06：每个绑定角色都要有【角色一致性】条款（简版「身份外观遵循」或三锚，
-        # 全包统一一种）。完全没有条款时，近景吃图、远景吃文字，
+        # WAN30-06：每个绑定角色都要有指针式【角色一致性】条款。完全没有条款时，近景吃图、远景吃文字，
         # 全身与远景会脱离参考图自由发挥（替身千金 14 段全无锚点已实证）。
         if char_names and bindings.get("角色"):
             clause = re.search(r"(?:【角色一致性】|角色一致性[：:])([^【\n]*)", prompt)
@@ -331,8 +330,8 @@ def check_prompt(prompt: str, episode: str, shot: str, duration: int, bindings: 
                     missing.append(name)
             if missing:
                 errors.append(
-                    f"{label}: 角色 {('、'.join(missing))} 缺少【角色一致性】条款（简版「姓名：身份外观遵循 "
-                    "CHAR_xx 人物参考图」或三锚：姓名：发型／固定饰件／外套品类＋固有色，同一角色全包统一一种）（WAN30-06）")
+                    f"{label}: 角色 {('、'.join(missing))} 缺少指针式【角色一致性】条款"
+                    "（姓名：身份外观遵循 CHAR_xx 人物参考图，不写外貌词）（WAN30-06）")
     # WAN30-03：应用按实际上传顺序生成「@图片N：类型「名称」」清单。
     # 正文 @ImageN 若与该清单错位，每个角色都会拿到别人的参考图。
     # 这段检查必须跑在段落结构校验之前——应用提交文本用的标题是【参考图片】而非【参考】。
@@ -579,7 +578,7 @@ def check_prompt(prompt: str, episode: str, shot: str, duration: int, bindings: 
             if not _m:
                 continue
             _ap = asset_prompts.get(_code, "")
-            # 服装变体片段：第三锚来自所绑服装资产，不是角色卡
+            # 服装变体片段：着装以所绑服装资产为准，不来自角色卡正文
             for _pcode in bindings.get("道具", []):
                 _pp = asset_prompts.get(_pcode, "")
                 if _pp and re.search(rf"供\s*{re.escape(_code)}\s*穿着", _pp):
@@ -1327,8 +1326,8 @@ def check_identity_and_reference_budget(episodes: list, char_names: dict,
                                         errors: list, warnings: list) -> dict:
     """WAN30-09 角色一致性全包同源 + WAN30-08 参考预算。
 
-    Wan 全身 9:16 角色参考图锁定全套服装；视频正文只保留发型、固定饰件、
-    外套品类与固有色三锚。下装与鞋不在正文重复，避免图文两套真值。
+    Wan 全身 9:16 角色参考图锁定全套服装；视频正文只保留指针式
+    【角色一致性】条款。外貌词不在正文重复，避免图文两套真值。
     """
     names = {re.split(r"[（(]", n)[0].strip() for n in char_names.values() if n}
     anchors: dict[str, dict[str, list[str]]] = {}
@@ -1510,7 +1509,7 @@ def check_outfit_consistency(parsed: dict, char_names: dict,
                             errors.append(
                                 f"{label}: 服装变体 {owner_outfit} 已绑定，但 {name} 的识别锚"
                                 f"仍写默认装「{'、'.join(sorted(stale))}」——"
-                                "变体片段的第三锚必须换成变体上装，或写成「前半A→后半B」；该角色全包统一改用简版条款时靠绑定的变体 PROP 表达")
+                                "换装片段应绑定变体 PROP 并在正文写状态变化（前半A→后半B），不把默认装写回条款或正文")
                     continue
                 worn = per_char.get(name, set())
                 if not worn:
@@ -1745,7 +1744,7 @@ def check_prompt_layers(parsed: dict, char_names: dict[str, str], policy: dict,
                         model: str, errors: list[str], warnings: list[str]) -> None:
     """资产图写全外观，视频提示词只写镜头、动作与状态变化；同一事实不写两遍。
 
-    硬拦三类可枚举的越界：资产图写镜头/台词/表演词；Wan3.0 三锚写面料/剪裁/内搭/裤鞋；
+    硬拦三类可枚举的越界：资产图写镜头/台词/表演词；Wan3.0 一致性条款写面料/剪裁/内搭/裤鞋；
     视频正文写硬亮线/湿反光等油腻词。场景/道具材质词成簇只提醒，语义重复交给评审。
     """
     cfg = policy.get("prompt_layers", {}) or {}
@@ -1777,7 +1776,7 @@ def check_prompt_layers(parsed: dict, char_names: dict[str, str], policy: dict,
                 f"{asset['code']}: 资产图只写外观/空间/形制，出现「{match.group(0)}」——"
                 "镜头、台词、表演和剧情动作属于视频提示词；删掉，资产图只锁静态外观")
 
-    # 2) 视频：Wan3.0 三锚只写发型/固定饰件/外套品类+固有色；油腻词判错；场景/道具细节成簇提醒
+    # 2) 视频：Wan3.0 一致性条款不写面料/剪裁/内搭/裤鞋等外貌词；油腻词判错；场景/道具细节成簇提醒
     for episode in parsed.get("episodes", []):
         for shot in episode.get("shots", []):
             prompt = (shot.get("prompts", {}) or {}).get("视频提示词", "")
@@ -1801,8 +1800,8 @@ def check_prompt_layers(parsed: dict, char_names: dict[str, str], policy: dict,
                     for part in re.split(r"[／/、→]", right):
                         for match in anchor_re.finditer(part):
                             errors.append(
-                                f"{label}: {left} 的三锚写了「{match.group(0)}」——"
-                                "三锚只写发型／固定饰件／外套品类＋固有色；面料、剪裁、版型、"
+                                f"{label}: {left} 的一致性条款写了「{match.group(0)}」——"
+                                "条款只写「身份外观遵循」指针与状态变化；面料、剪裁、版型、"
                                 "内搭、裤鞋由资产图锁，正文重复会造出第二套服装真值")
             for line in prompt.splitlines():
                 for match in oily_re.finditer(line):
