@@ -315,7 +315,8 @@ def check_prompt(prompt: str, episode: str, shot: str, duration: int, bindings: 
             errors.append(
                 f"{label}: 参考里仍把角色卡写成四视图设定板——Wan3.0 已改为单人全身塑像图，"
                 "四视图不得进视频参考（WAN30-05）")
-        # WAN30-06：每个绑定角色都要有三锚条款。没有锚点时，近景吃图、远景吃文字，
+        # WAN30-06：每个绑定角色都要有【角色一致性】条款（简版「身份外观遵循」或三锚，
+        # 全包统一一种）。完全没有条款时，近景吃图、远景吃文字，
         # 全身与远景会脱离参考图自由发挥（替身千金 14 段全无锚点已实证）。
         if char_names and bindings.get("角色"):
             clause = re.search(r"(?:【角色一致性】|角色一致性[：:])([^【\n]*)", prompt)
@@ -330,8 +331,8 @@ def check_prompt(prompt: str, episode: str, shot: str, duration: int, bindings: 
                     missing.append(name)
             if missing:
                 errors.append(
-                    f"{label}: 角色 {('、'.join(missing))} 缺少三锚条款（姓名：发型／固定饰件／外套品类＋固有色）"
-                    "——没有锚点时远景与全身会脱离参考图；补进【角色一致性】（WAN30-06）")
+                    f"{label}: 角色 {('、'.join(missing))} 缺少【角色一致性】条款（简版「姓名：身份外观遵循 "
+                    "CHAR_xx 人物参考图」或三锚：姓名：发型／固定饰件／外套品类＋固有色，同一角色全包统一一种）（WAN30-06）")
     # WAN30-03：应用按实际上传顺序生成「@图片N：类型「名称」」清单。
     # 正文 @ImageN 若与该清单错位，每个角色都会拿到别人的参考图。
     # 这段检查必须跑在段落结构校验之前——应用提交文本用的标题是【参考图片】而非【参考】。
@@ -1509,7 +1510,7 @@ def check_outfit_consistency(parsed: dict, char_names: dict,
                             errors.append(
                                 f"{label}: 服装变体 {owner_outfit} 已绑定，但 {name} 的识别锚"
                                 f"仍写默认装「{'、'.join(sorted(stale))}」——"
-                                "变体片段的第三锚必须换成变体上装，或写成「前半A→后半B」")
+                                "变体片段的第三锚必须换成变体上装，或写成「前半A→后半B」；该角色全包统一改用简版条款时靠绑定的变体 PROP 表达")
                     continue
                 worn = per_char.get(name, set())
                 if not worn:
