@@ -100,3 +100,5 @@
 | 2026-10-29 | R39–R44 | policy v35：逐资产／逐镜／逐提示词证据门、实际范围派生与哈希锁；Wan字幕统一句硬检；跨段指令及重复字段拒绝；阶段3接入站位几何校验 | quality-evidence-contract、quality_evidence、prompt_contracts、validate_stage_artifacts、build_handoff、workflow_common、workflow-spec、SKILL、checklist、prompt-review与正反回归 |
 
 | 2026-10-30 | R45，policy v36 | 接入官方机器快照与知识定位；保留18,000／四段项目契约，在公共层增加总体描述及官方要素映射；分离文字修订、视频编辑和延长，补真实请求离线检查，自动派单增加Wan专用必读；未修改其他模型格式和用户作品 | SKILL、policy、Wan规范／适配器、新增官方与任务参考、prompt-review、execution-checklist、分支矩阵、build_handoff、请求检查及回归 |
+
+| 2026-11-03 | OUTFIT-04 | 按片段解析身份与服装职责；整套/局部覆盖分开；禁止人物图与PROP双重服装基准，公共层独立着装来源指针 | outfit-variants（定义）、asset-reference-binding、prompt-layering、SKILL、compact-import、prompt-review、Wan适配器、failure-cases、validate_compact_package、test_outfit_authority |

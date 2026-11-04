@@ -1450,6 +1450,45 @@ def check_outfit_consistency(parsed: dict, char_names: dict,
                         f"{label}: 服装资产 {code} 的参考行没写「唯一基准」——"
                         "角色塑像图仍穿着默认装，不点明唯一基准，模型会两套衣服混用")
 
+            # OUTFIT-04: resolve clothing authority per wearer, not per image.
+            # H3 uses its own fields/tags; this check is for four-section packages.
+            if bound_outfits and "【参考】" in prompt:
+                def ref_entry(code):
+                    match = re.search(rf"(?<![A-Z0-9_]){re.escape(code)}\s*[＝=]([^；。\n]+)", reference)
+                    return match.group(1) if match else ""
+
+                public = prompt.split("【公共总规范】", 1)[-1].split("【时间轴】", 1)[0]
+                for owner in sorted({outfits[c] for c in bound_outfits if outfits[c]}):
+                    role_ref = ref_entry(owner)
+                    if not re.search(r"身份", role_ref) or re.search(
+                            r"身份与服装|服装唯一|(?:服装|着装)[^。；\n]{0,12}(?:全片不变|全剧不变)", role_ref):
+                        errors.append(f"{label}: {owner} 已绑定换装资产，人物参考职责须为身份基准，"
+                                      "不得同时锁默认服装或写全片不变（OUTFIT-04）")
+                    owned = [c for c in bound_outfits if outfits[c] == owner]
+                    for code in owned:
+                        # Explicit pointer, no repeated garment description.
+                        if not re.search(rf"{re.escape(owner)}\s*[＝=]\s*{re.escape(code)}(?![A-Z0-9_])", public):
+                            errors.append(f"{label}: 缺少着装来源指针 {owner}＝{code}；"
+                                          "在公共层写明服装覆盖关系（OUTFIT-04）")
+                    if re.search(r"(?:每张|所有|全部)[^。\n]{0,45}(?:服装和配饰|服装与配饰|身份与服装)", public):
+                        errors.append(f"{label}: 通用角色一致性句重新把服装交给全部人物图；"
+                                      "身份与本段着装须分工（OUTFIT-04）")
+                    # More than one outfit is valid only with explicit disjoint scope,
+                    # or a timed change. Ambiguous scope fails closed.
+                    if len(owned) > 1:
+                        scopes = []
+                        for code in owned:
+                            scope = re.search(r"覆盖范围[：:]([^。；\n]+)", assets[code].get("prompt", ""))
+                            scopes.append(set(re.split(r"[、,，/＋+]", scope.group(1).strip())) if scope else {"整套"})
+                        overlap = any("整套" in scope or "全套" in scope for scope in scopes)
+                        overlap = overlap or any(scopes[i] & scopes[j] for i in range(len(scopes)) for j in range(i))
+                        # A different character's change must not exempt this owner.
+                        name = _base_name(char_names.get(owner, owner))
+                        change_lines = [clause for clause in re.split(r"[。；;，,\n]", timeline) if name in clause]
+                        if overlap and not any(CHANGE_VERB.search(line) for line in change_lines):
+                            errors.append(f"{label}: {owner} 同时绑定覆盖范围重叠或未声明范围的服装资产；"
+                                          "须明确互不重叠部位或逐镜换装动作（OUTFIT-04）")
+
             variant_words = [word for word in VARIANT_WORDS if word in timeline]
             per_char: dict = {}
             for char_code in bound_chars:
