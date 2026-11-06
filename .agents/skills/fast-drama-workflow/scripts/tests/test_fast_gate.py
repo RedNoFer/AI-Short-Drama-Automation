@@ -91,6 +91,49 @@ class GateCliTest(unittest.TestCase):
             )
             self.assertEqual(mod._r39_check(pkg), [])
 
+    def test_negation_object_denial_detected_in_video_block(self):
+        mod = _load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            pkg = Path(tmp) / "pkg.md"
+            pkg.write_text(
+                "#### 视频提示词\n\n```text\n"
+                "空间与入口：灶台一角白瓷小盘，南瓜与蒸锅不在画面内。\n"
+                "禁止项：HDR。本段南瓜与蒸锅不出现在画面内。\n"
+                "```\n",
+                encoding="utf-8",
+            )
+            issues = mod._negation_check(pkg)
+            self.assertEqual(len(issues), 2)
+            self.assertTrue(all(i["kind"] == "negation_object_denial" for i in issues))
+
+    def test_negation_detected_in_image_block(self):
+        mod = _load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            pkg = Path(tmp) / "pkg.md"
+            pkg.write_text(
+                "#### 图片提示词\n\n```text\n"
+                "16:9单张：瓷盘微距，盒盖花纹不入画。\n"
+                "```\n",
+                encoding="utf-8",
+            )
+            issues = mod._negation_check(pkg)
+            self.assertEqual(len(issues), 1)
+
+    def test_negation_whitelist_phrases_pass(self):
+        mod = _load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            pkg = Path(tmp) / "pkg.md"
+            pkg.write_text(
+                "#### 视频提示词\n\n```text\n"
+                "空间与入口：桌面固定陈设只有支架与手机，其余台面空置。画面上缘仅容盒缘一弧入画。\n"
+                "```\n\n"
+                "#### 图片提示词\n\n```text\n"
+                "画面中无人物、无人脸、无手；无文字、无水印。\n"
+                "```\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(mod._negation_check(pkg), [])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

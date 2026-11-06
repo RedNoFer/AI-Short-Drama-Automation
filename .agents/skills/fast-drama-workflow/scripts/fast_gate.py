@@ -6,8 +6,11 @@
 2. audit_wan30_antipatterns.py <pkg> --json       —— 反例模式
 3. validate_novel_coverage.py <pkg> <novel>       —— 原文覆盖（--novel 缺省则 SKIP）
 
-第 0 步本地预检：已登记规则 R39/TEXT-03 的存在性机检（含台词或心声块缺
-`画面文字纪律：` 统一句即为硬错）。待完全体校验器回填该项后移除。
+第 0 步本地预检：已登记规则的存在性机检——
+1. R39/TEXT-03：含台词或心声的提示词块缺 `画面文字纪律：` 统一句即为硬错；
+2. 否定写法纪律（wan30-adapter §4.2 第 7 块）：视频/图片提示词正文出现
+   「不在画面／不入画／不出镜／未出镜」类具象名词否定句即为硬错。
+待完全体校验器回填上述项后移除对应预检。
 
 硬错 = 必须修复后重跑（秒级迭代）；风险 = 一句话结论，合评时给理由即可。
 """
@@ -23,9 +26,12 @@ from pathlib import Path
 SCRIPTS_DIR = Path(__file__).resolve().parents[2] / "short-drama-workflow" / "scripts"
 
 PROMPT_BLOCK_RE = re.compile(r"####\s*视频提示词\s*\n+```text\n(.*?)```", re.S)
+IMAGE_BLOCK_RE = re.compile(r"####\s*图片提示词\s*\n+```text\n(.*?)```", re.S)
 DIALOGUE_HINT_RE = re.compile(r'["“].*["”]', re.S)
 SPEECH_MARKER_RE = re.compile(r"口型|画外|心声|对白（|对白:")
 TEXT_DISCIPLINE_RE = re.compile(r"^\s*画面文字纪律[：:]", re.M)
+# 否定写法纪律（wan30-adapter §4.2 第 7 块）：正文点名被排除物＝给概念加权。
+NEGATION_PHRASE_RE = re.compile(r"不在画面|不出现在画面|不入画|不出镜|未出镜")
 
 
 def _run(cmd: list[str]) -> tuple[int, str, str]:
@@ -63,6 +69,42 @@ def _r39_check(pkg: Path) -> list[dict]:
     return issues
 
 
+def _negation_check(pkg: Path) -> list[dict]:
+    """否定写法纪律预检：提示词正文出现具象名词否定句即为硬错。
+
+    生成模型对否定词低敏感、具象名词每多出现一次显著度递增
+    （实机案例：正文两处「南瓜不在画面内」反致南瓜入画）。
+    排除一律改正向白名单；被排除物来自参考图时改图不改字。
+    """
+    issues: list[dict] = []
+    try:
+        text = pkg.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        return [{"kind": "negation_preflight_io", "segment": str(pkg), "detail": str(exc)}]
+    for block_re, label in (
+        (PROMPT_BLOCK_RE, "视频提示词"),
+        (IMAGE_BLOCK_RE, "图片提示词"),
+    ):
+        for match in block_re.finditer(text):
+            body = match.group(1)
+            for hit in NEGATION_PHRASE_RE.finditer(body):
+                start = text.count("\n", 0, match.start()) + 1
+                ctx_l = max(0, hit.start() - 12)
+                context = body[ctx_l:hit.end() + 12].replace("\n", " ")
+                issues.append(
+                    {
+                        "kind": "negation_object_denial",
+                        "segment": f"约第 {start} 行{label}块",
+                        "detail": (
+                            f"正文出现具象名词否定「…{context}…」——按 wan30-adapter "
+                            "§4.2 第 7 块改正向白名单（只写有什么，不点名被排除物）；"
+                            "被排除物来自参考图时改图不改字"
+                        ),
+                    }
+                )
+    return issues
+
+
 def _fmt_issues(items: list[dict], limit: int = 12) -> list[str]:
     out = []
     for item in items[:limit]:
@@ -92,6 +134,11 @@ def main() -> int:
     r39_issues = _r39_check(args.package)
     if r39_issues:
         report["hard_errors"].append({"step": "0 文字纪律预检", "items": r39_issues})
+
+    # 第 0 步：否定写法纪律预检
+    neg_issues = _negation_check(args.package)
+    if neg_issues:
+        report["hard_errors"].append({"step": "0 否定写法预检", "items": neg_issues})
 
     # 第 1 步：结构校验
     rc, out, err = _run(
