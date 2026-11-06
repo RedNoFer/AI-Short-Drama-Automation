@@ -1,5 +1,5 @@
 {
-  "policy_version": 36,
+  "policy_version": 37,
   "execution": {
     "model": "isolated_stage_subagents",
     "orchestrator_holds": [
@@ -143,14 +143,14 @@
       "label": "Wan3.0 轨（新增）",
       "prompt_max_chars": 18000,
       "time_granularity": "0.5秒",
-      "duration": "无视频输入2–30整数秒或智能时长；含视频参考时另验输入总长与输出预算；0.5秒只指本地镜头时间轴",
-      "duration_min": 2,
+      "duration": "单段固定30秒（2026-11-06用户指令定版为硬规范）；官方API仍接受2–30整数秒或智能时长，但本项目生产不使用弹性；0.5秒只指本地镜头时间轴",
+      "duration_min": 30,
       "duration_max": 30,
       "references": "≤10参考图＋≤5参考视频（合计≤15秒）＋≤5参考音频（合计≤15秒）；file/link二选一≤1；首尾帧与参考类型互斥。单人塑像图是本项目角色图策略，不是所有视频输入只能用图片。",
       "dialect": "compact_package保留四段：【参考】【公共总规范】【时间轴】【收尾】；公共层先写总体描述，按官方要素组织各段；包内用资产代码，实际上传后按媒体类型分别编号。direct_prompt按任务使用官方自由公式，不套四段、镜数带、一致性条款。",
       "editing": "区分提示词文字修订、实际视频编辑、视频延长：文字仅修受影响正文和接口；编辑定位对象及保留项并允许必要光学/接触联动；延长另算方向、原片边界、新内容与总时长。冻结上游有误才定向重开。",
       "spec": "references/wan30-official-rules.md＋wan30-task-compiler.md＋wan30-prompt-spec.md＋wan30-adapter-v1.0.md；本地反例策略限定在既有短剧制作包。",
-      "validator": "validate_compact_package.py --model wan30 已实现（仅字符硬上限18000，无下限/时长2-30s/0.5秒粒度）；反例专项审计 audit_wan30_antipatterns.py",
+      "validator": "validate_compact_package.py --model wan30 已实现（仅字符硬上限18000，无下限/单段固定30秒/0.5秒粒度）；反例专项审计 audit_wan30_antipatterns.py",
       "anti_patterns": {
         "video_reference": "single_person_full_body_frontal_statue_only",
         "forbid_four_view_video_ref": true,

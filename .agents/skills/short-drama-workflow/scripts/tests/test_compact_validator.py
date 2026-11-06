@@ -497,10 +497,14 @@ class CompactValidatorTests(unittest.TestCase):
         self.assertTrue(any("与正文不符" in e for e in result["errors"]), result["errors"])
 
     def test_wan30_duration_bounds(self):
-        rows24 = WAN_ROWS.replace("14.5-22秒", "14.5-20秒").replace("22-30秒", "20-24秒")
-        pkg = make_package(ratio="9:16", rows=rows24, pad=WAN_PAD, dur=24, lock="")
-        self.assertTrue(validator.validate(pkg, POLICY, model="wan30", space_exempt=True)["ok"])
-        self.assertFalse(validator.validate(pkg, POLICY, space_exempt=True)["ok"])
+        """Wan3.0 单段固定 30 秒（2026-11-06 用户指令硬规范）：30 秒通过，24 秒段判错。"""
+        rows24 = WAN_ROWS.replace("14.5-22秒", "14.5-19.5秒").replace("22-30秒", "19.5-24秒")
+        pkg24 = make_package(ratio="9:16", rows=rows24, pad=WAN_PAD, dur=24, lock="")
+        result = validator.validate(pkg24, POLICY, model="wan30", space_exempt=True)
+        self.assertFalse(result["ok"])
+        self.assertTrue(any("单段固定 30 秒" in e for e in result["errors"]), result["errors"])
+        pkg30 = make_package(ratio="9:16", rows=WAN_ROWS, pad=WAN_PAD, dur=30, lock="")
+        self.assertTrue(validator.validate(pkg30, POLICY, model="wan30", space_exempt=True)["ok"])
 
     def test_wan30_granularity_rejected(self):
         bad_rows = WAN_ROWS.replace("1.5-4秒", "1.7-4秒", 1)

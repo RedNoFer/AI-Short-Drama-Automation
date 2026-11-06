@@ -2131,10 +2131,14 @@ def validate(source: str, policy: dict, model: str | None = None,
                 errors.append(f"{label}: 需要标题和正整数时长")
             if model == "wan30":
                 prof = policy.get("model_profiles", {}).get("wan30", {})
-                dlo = prof.get("duration_min", 2)
+                dlo = prof.get("duration_min", 30)
                 dhi = prof.get("duration_max", 30)
                 if not dlo <= shot["duration"] <= dhi:
-                    errors.append(f"{label}: 片段时长 {shot['duration']} 秒，不在 Wan3.0 允许的 {dlo}–{dhi} 秒范围")
+                    if dlo == dhi:
+                        errors.append(f"{label}: Wan3.0 单段固定 {dlo} 秒（2026-11-06 用户指令硬规范）；当前 {shot['duration']} 秒，"
+                                      f"须把内容拆分为多段或并为 {dlo} 秒")
+                    else:
+                        errors.append(f"{label}: 片段时长 {shot['duration']} 秒，不在 Wan3.0 允许的 {dlo}–{dhi} 秒范围")
             elif model == "h3":
                 prof = policy.get("model_profiles", {}).get("h3", {})
                 official_max = prof.get("official_clip_duration_max", 15)

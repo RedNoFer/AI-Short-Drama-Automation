@@ -8,7 +8,7 @@ python3 .agents/skills/fast-drama-workflow/scripts/fast_gate.py <作品目录>/�
 
 内部串联三个完全体校验器（不复制其逻辑），任何一个环节自身报错（脚本缺失/参数错）都算硬错，先修环境：
 
-1. `validate_compact_package.py <包> --model wan30`——结构硬错：时间轴、绑定、字符上限、四段结构、`【参数】`拦截、声线锁定缺失等；
+1. `validate_compact_package.py <包> --model wan30`——结构硬错：时间轴、绑定、字符上限、四段结构、`【参数】`拦截、声线锁定缺失、**单段固定 30 秒**（继承 [model-branch-matrix](../../short-drama-workflow/references/model-branch-matrix.md) 2026-11-06 用户指令硬规范，非快速档自有规则）等；
 2. `audit_wan30_antipatterns.py <包> --json`——反例模式：站排/五人同框、静物/空镜超时、字条可读风险、慢镜、暖光词；
 3. `validate_novel_coverage.py <包> <小说>`——原文覆盖（未给 `--novel` 时标 SKIP 并在交付说明里注明）。
 

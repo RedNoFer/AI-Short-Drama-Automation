@@ -190,7 +190,7 @@ Wan3.0 轨的角色资产图**不是四视图**，也不是另出的场景剧照
     python3 /Users/a1/work/3000课程21个skill/.agents/skills/short-drama-workflow/scripts/validate_compact_package.py /绝对路径/创作输出/作品名/精简制作包.md
     python3 /Users/a1/work/3000课程21个skill/.agents/skills/short-drama-workflow/scripts/validate_novel_coverage.py /绝对路径/创作输出/作品名/精简制作包.md /输入单登记的用户原始小说.txt（支持 docx）
 
-按输入单登记的生成轨加参数：Wan3.0 轨加 `--model wan30`（0.5 秒粒度／仅硬上限 18000 字符／无字数下限或目标带／2–30 秒；同时查 WAN30-04 包内零编号、WAN30-05 禁止否定参考与四视图卡、角色单人正面全身塑像、占高 92%–94%、下装与鞋、指针一致性条款）；**MiniMax H3 轨加 `--model h3`**（官方字段结构、app 模式默认 30 秒应用片段／official 模式 4–15 秒、毫秒切点、0–6 次硬切、硬顶 6000 字符／过简提醒 1200）；Seedance 2.5 轨按档位加 `--tier tier1_standard|tier2_xiaomo63|tier3_full_xiaomo63`（字符上限与硬切带随档位切换，缺省按项目策略当前默认档第二档 3000 字符／5–10 次硬切）。
+按输入单登记的生成轨加参数：Wan3.0 轨加 `--model wan30`（0.5 秒粒度／仅硬上限 18000 字符／无字数下限或目标带／**单段固定 30 秒**（2026-11-06 用户指令硬规范）；同时查 WAN30-04 包内零编号、WAN30-05 禁止否定参考与四视图卡、角色单人正面全身塑像、占高 92%–94%、下装与鞋、指针一致性条款）；**MiniMax H3 轨加 `--model h3`**（官方字段结构、app 模式默认 30 秒应用片段／official 模式 4–15 秒、毫秒切点、0–6 次硬切、硬顶 6000 字符／过简提醒 1200）；Seedance 2.5 轨按档位加 `--tier tier1_standard|tier2_xiaomo63|tier3_full_xiaomo63`（字符上限与硬切带随档位切换，缺省按项目策略当前默认档第二档 3000 字符／5–10 次硬切）。
 
 覆盖率脚本验证各集 `小说原文` 块对用户原始小说的逐字命中（默认 ≥0.99）与源覆盖（默认 ≥0.95）；只制作部分章节时用 `--allow-partial` 并在输入单注明范围；列出的每处差异由 agent 判定授权改编还是漏改，拿不到源文件时标「待核」，不得标评审通过。
 

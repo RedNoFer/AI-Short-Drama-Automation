@@ -98,15 +98,34 @@ def main() -> int:
         [sys.executable, str(SCRIPTS_DIR / "validate_compact_package.py"),
          str(args.package), "--model", "wan30"]
     )
+    full_out = (out or err)
+    errors_i = [ln.strip() for ln in full_out.splitlines() if "错误：" in ln]
+    warn_i = [ln.strip() for ln in full_out.splitlines() if "提醒：" in ln]
+
+    def _mk_item(line: str) -> dict:
+        m = re.match(r"错误：([^:：]+)：?\s*(.*)", line)
+        if m:
+            return {"kind": "validator_error", "segment": m.group(1),
+                    "detail": m.group(2).lstrip("：: ")}
+        return {"kind": "validator_error", "segment": "", "detail": line}
+
     if rc != 0:
-        tail = (err or out).strip().splitlines()[-8:]
-        report["hard_errors"].append(
-            {"step": "1 结构校验", "returncode": rc,
-             "items": [{"detail": " ".join(tail)[:400]}]}
-        )
+        if errors_i:
+            report["hard_errors"].append(
+                {"step": "1 结构校验", "returncode": rc,
+                 "items": [_mk_item(e) for e in errors_i]}
+            )
+        else:  # 非预期失败（无结构化错误行）：回退截尾展示
+            tail = full_out.strip().splitlines()[-8:]
+            report["hard_errors"].append(
+                {"step": "1 结构校验", "returncode": rc,
+                 "items": [{"detail": " ".join(tail)[:400]}]}
+            )
     else:
-        last = (out or err).strip().splitlines()[-1:] or [""]
+        last = full_out.strip().splitlines()[-1:] or [""]
         report["structure_summary"] = last[0]
+    if warn_i:
+        report["risks"].extend(warn_i)
 
     # 第 2 步：反例审计
     rc, out, err = _run(
@@ -191,8 +210,11 @@ def main() -> int:
         if report["risks"]:
             print("\n风险（合评给理由即可，不强制清零）：")
             for risk in report["risks"]:
-                for kind, n in sorted(risk.get("counts", {}).items()):
-                    print(f"  - {kind} ×{n}")
+                if isinstance(risk, str):
+                    print(f"  - {risk[:180]}")
+                else:
+                    for kind, n in sorted(risk.get("counts", {}).items()):
+                        print(f"  - {kind} ×{n}")
         if report["hard_errors"]:
             print("\n硬错（必须修复后重跑本命令）：")
             for block in report["hard_errors"]:

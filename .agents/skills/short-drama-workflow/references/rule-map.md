@@ -102,3 +102,5 @@
 | 2026-10-30 | R45，policy v36 | 接入官方机器快照与知识定位；保留18,000／四段项目契约，在公共层增加总体描述及官方要素映射；分离文字修订、视频编辑和延长，补真实请求离线检查，自动派单增加Wan专用必读；未修改其他模型格式和用户作品 | SKILL、policy、Wan规范／适配器、新增官方与任务参考、prompt-review、execution-checklist、分支矩阵、build_handoff、请求检查及回归 |
 
 | 2026-11-03 | OUTFIT-04 | 按片段解析身份与服装职责；整套/局部覆盖分开；禁止人物图与PROP双重服装基准，公共层独立着装来源指针 | outfit-variants（定义）、asset-reference-binding、prompt-layering、SKILL、compact-import、prompt-review、Wan适配器、failure-cases、validate_compact_package、test_outfit_authority |
+
+| 2026-11-06 | Wan3.0 单段固定 30 秒（用户指令） | 弹性时长退役为 API 事实登记：制作包每段固定 30 秒、时间轴覆盖 0–30.0 秒；policy v37 duration_min=duration_max=30 机检强制，超量拆段/不足留白承接 | policy、wan30-prompt-spec、wan30-adapter、model-branch-matrix、workflow-spec、compact-import、validate_compact_package、tests |
