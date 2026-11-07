@@ -1,6 +1,6 @@
 # Skill: 快速生产流水线（Wan3.0 快速档）
 
-一句话：单人单会话、单遍直出、两个检查点（一条命令机检＋一轮合评），把完全体影视工作流的包制作时间从小时级压到 35–50 分钟/章，写作质量靠完全体的规范文件保证。
+一句话：单人单会话、单遍直出、两个检查点（一条命令机检＋一轮合评），把完全体影视工作流的包制作时间从小时级压到 40–60 分钟/章（2026-11-07 起含站位基底与交叉校验），写作质量靠完全体的规范文件保证。
 
 **与完全体的关系**：[short-drama-workflow](../short-drama-workflow/SKILL.md) 保持不动，继续服务多人协作、全量审计与升级回退。本 skill **不复制、不修改任何写作规范**——所有"怎么写"的知识直接引用完全体 reference（引用覆盖对照表见下）；快速档只改变流程编排与检查密度。轨固定 **Wan3.0**，Seedance/H3 需要时再扩展。
 
@@ -23,12 +23,12 @@
 |---|---|---|---|
 | A 输入登记 | 迷你输入单：源文件/版本哈希/画风/轨/范围 | [project-brief](../short-drama-workflow/references/project-brief.md) 最小字段 | 2 min |
 | B 剧本＋切分 | **单遍直出**：读一遍原文→事件分集＋拍摄剧本＋片段切分＋容量自查一次完成 | [story-evaluation](../short-drama-workflow/references/story-evaluation.md)（评估尺）、[runtime-planning](../short-drama-workflow/references/runtime-planning.md)（估时口径）、[pace-and-hook-spec](../short-drama-workflow/references/pace-and-hook-spec.md)（A 层自查内嵌）、S15 创作指令与知识库 | 10–15 min |
-| C 资产 | 角色/场景/道具卡＋声线母版，写法完全照完全体规范 | [prompt-layering](../short-drama-workflow/references/prompt-layering.md)、[asset-image-production](../short-drama-workflow/references/asset-image-production.md)、[character-asset-prompts](../character-asset-prompts/SKILL.md)、[voice-and-dubbing](../short-drama-workflow/references/voice-and-dubbing.md)、[outfit-variants](../short-drama-workflow/references/outfit-variants.md)（命中才读）、S03 拆资产（按需） | 8–12 min |
-| D 编译 | 直接写片段级视频提示词：镜头前置、三锚、微表演融进正文；不落独立逐镜表 | [wan30-prompt-spec](../short-drama-workflow/references/wan30-prompt-spec.md)、[wan30-adapter](../short-drama-workflow/references/wan30-adapter-v1.0.md)、小墨 6.3（行内纪律）、[micro-expression-layer](../short-drama-workflow/references/micro-expression-layer.md)、[content-expression](../short-drama-workflow/references/content-expression.md)、W14/W18（命中才读最小集：不出 JSON，正文内嵌初始位/轴线侧/机位）、[fight-router](../short-drama-workflow/references/fight-router.md)＋S18 拆镜与 388（A/B 级打斗段引用） | 10–15 min |
+| C 资产 | 角色/场景/道具卡＋声线母版＋命中风险闸门场景的站位基底 SCENE_JSON（W18 最小集；从 [station-templates](references/station-templates/README.md) 原型复制改坐标），写法完全照完全体规范 | [prompt-layering](../short-drama-workflow/references/prompt-layering.md)、[asset-image-production](../short-drama-workflow/references/asset-image-production.md)、[character-asset-prompts](../character-asset-prompts/SKILL.md)、[voice-and-dubbing](../short-drama-workflow/references/voice-and-dubbing.md)、[outfit-variants](../short-drama-workflow/references/outfit-variants.md)（命中才读）、S03 拆资产（按需） | 8–12 min |
+| D 编译 | 直接写片段级视频提示词：镜头前置、三锚、微表演融进正文；逐镜全要素密度基线（机位锚/光线落点/动作过程/表演线索/声音分层，**一遍写足不设增密二遍**）；每段落笔即跑 lint_segment 秒级自检、错误当段清；风险镜头镜级站位增量；不落独立逐镜表 | [wan30-prompt-spec](../short-drama-workflow/references/wan30-prompt-spec.md)、[wan30-adapter](../short-drama-workflow/references/wan30-adapter-v1.0.md)、小墨 6.3（行内纪律）、[micro-expression-layer](../short-drama-workflow/references/micro-expression-layer.md)、[content-expression](../short-drama-workflow/references/content-expression.md)、W14/W18（命中才读最小集：不出 JSON，正文内嵌初始位/轴线侧/机位）、[fight-router](../short-drama-workflow/references/fight-router.md)＋S18 拆镜与 388（A/B 级打斗段引用） | 10–15 min |
 | E 机检＋合评 | `fast_gate.py` 一条命令 → 硬错即修即跑 → [合评清单](references/lean-checks.md) 10 项 | [prompt-review](../short-drama-workflow/references/prompt-review.md)（严重度口径与合评视角浓缩） | 5–8 min |
 | F 交付 | `精简制作包.md`（完全体模板原样，字段不变） | [compact-import](../short-drama-workflow/references/compact-import.md)、[模板副本](../short-drama-workflow/assets/drama-compact-package-template.md) | 1 min |
 
-**B/C/D 单遍直出的含义**：不落独立中间文档（无 01/02/04 内部文件、无 03b 评稿、无逐镜表/站位 JSON/三份账）。发现上游错，当场修当前稿，不回滚阶段；交付后用户提的修改走定向改稿同样规则。
+**B/C/D 单遍直出的含义**：不落独立中间文档（无 01/02/04 内部文件、无 03b 评稿、无逐镜表/三份账；命中闸门场景的站位 SCENE_JSON 除外——落 `内部/04b-站位图`）。发现上游错，当场修当前稿，不回滚阶段；交付后用户提的修改走定向改稿同样规则。
 
 ## 引用覆盖对照表（完全体必读 → 快速档处置）
 
@@ -41,14 +41,14 @@
 | outfit-variants | 命中服装变体才读 |
 | micro-expression-layer | D 阶段保留引用（行内纪律＋C 阶段极性基线） |
 | 小墨 6.3、W14 组合流程 | D 阶段保留引用（不出中间文档） |
-| W18 站位流程／E28 站位 | 合并：命中风险闸门才读最小集，正文内嵌三行（初始位/轴线侧/机位），不落 JSON |
+| W18 站位流程／E28 站位 | **必建（2026-11-07 用户指令升级）**：命中风险闸门（多人同框≥2、固定座位、狭小室内、操作位）的场景出场景基底 SCENE_JSON＋风险镜头镜级增量，正文仍内嵌三行（初始位/轴线侧/机位）；单人镜与空镜不写 overlay |
 | fight-router、S18 拆镜 3.0、388 打斗 | 命中 A/B 级打斗段保留引用；纯文戏一行豁免 |
 | prompt-review | 合并：七视角浓缩为合评清单，严重度口径原样引用 |
 | wan30-prompt-spec／wan30-adapter／content-expression | D 阶段保留引用 |
 | failure-cases 相关条目 | 红线＋合评清单覆盖 TEXT-02/03、DIALOGUE-01、SPACE-01、SYNC-01 等高频项；其余按需查 |
 | Seedance S18 适配器／H3 系 skill | 豁免（本档固定 Wan3.0） |
 | compact-import／模板／校验脚本 | F 阶段保留（脚本由 fast_gate 封装） |
-| 站位交叉校验机检 | 豁免＋已知弱点标注：快速档无站位目录，靠正文内嵌三行；4+ 人或风险闸门场景多的项目应升级完全体 |
+| 站位交叉校验机检 | **必跑**：`内部/04b-站位图` 存在时 fast_gate 自动挂 `--space-dir` 交叉校验；未建且输入单未登记豁免＝硬错。多人群像项目不再建议豁免（2026-11-07） |
 | 覆盖率脚本 | fast_gate 第 3 步封装 |
 | 阶段 6 视频遵循检查 | 豁免：残余生成问题走编辑指令级修复，系统性失败触发升级条款 |
 

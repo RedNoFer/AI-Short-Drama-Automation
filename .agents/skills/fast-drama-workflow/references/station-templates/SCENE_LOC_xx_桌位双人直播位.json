@@ -1,0 +1,195 @@
+{
+  "version": "1.0",
+  "scene": {
+    "id": "LOC_xx",
+    "name": "桌位双人直播位（原型：车间直播角）",
+    "environment": "旧木桌靠墙，桌面立三脚架手机支架（直播手机朝向双人）；桌左右各一把木椅；右侧大格窗透天光，背景深处机械与货架暗部，桌左铁皮柜。出入走画面右侧过道。",
+    "time": "白天",
+    "scale": "meters",
+    "coordinateConvention": "+X东、+Z南、+Y上；地坪 y=0；屏幕左右另随相机计算",
+    "geometryStatus": "原型模板量化；使用前按实际场景改坐标并复跑 validate_space_blocking.py"
+  },
+  "characters": [
+    {
+      "id": "CHAR_01",
+      "name": "主讲（坐左）",
+      "color": "#958270",
+      "position": [
+        -0.45,
+        0.45,
+        -0.85
+      ],
+      "facing": 3.0245,
+      "facingTarget": [
+        -0.55,
+        0.45,
+        0.0
+      ],
+      "posePreset": "sit",
+      "supportSurfaceId": "chair_left",
+      "bodyType": "average",
+      "scale": 1
+    },
+    {
+      "id": "CHAR_02",
+      "name": "副讲（坐右）",
+      "color": "#958270",
+      "position": [
+        0.45,
+        0.45,
+        -0.85
+      ],
+      "facing": 2.2753,
+      "facingTarget": [
+        -0.55,
+        0.45,
+        0.0
+      ],
+      "posePreset": "sit",
+      "supportSurfaceId": "chair_right",
+      "bodyType": "slim",
+      "scale": 1
+    }
+  ],
+  "props": [
+    {
+      "id": "desk",
+      "name": "直播木桌",
+      "kind": "table",
+      "position": [
+        0,
+        0.375,
+        0
+      ],
+      "size": [
+        1.6,
+        0.75,
+        0.7
+      ]
+    },
+    {
+      "id": "tripod_phone",
+      "name": "支架直播手机",
+      "kind": "device",
+      "position": [
+        -0.55,
+        0.83,
+        0
+      ],
+      "size": [
+        0.08,
+        0.16,
+        0.04
+      ],
+      "serves": [
+        "CHAR_01",
+        "CHAR_02"
+      ]
+    },
+    {
+      "id": "chair_left",
+      "name": "左木椅",
+      "kind": "chair",
+      "position": [
+        -0.45,
+        0.225,
+        -0.85
+      ],
+      "size": [
+        0.45,
+        0.45,
+        0.45
+      ],
+      "seatFor": "CHAR_01"
+    },
+    {
+      "id": "chair_right",
+      "name": "右木椅",
+      "kind": "chair",
+      "position": [
+        0.45,
+        0.225,
+        -0.85
+      ],
+      "size": [
+        0.45,
+        0.45,
+        0.45
+      ],
+      "seatFor": "CHAR_02"
+    },
+    {
+      "id": "cabinet",
+      "name": "铁皮文件柜",
+      "kind": "box",
+      "position": [
+        -1.7,
+        0.6,
+        -0.3
+      ],
+      "size": [
+        0.5,
+        1.2,
+        0.5
+      ]
+    },
+    {
+      "id": "window_e",
+      "name": "大格窗",
+      "kind": "window",
+      "position": [
+        2.0,
+        1.2,
+        -0.5
+      ],
+      "size": [
+        0.1,
+        1.6,
+        2.2
+      ]
+    },
+    {
+      "id": "machine_bg",
+      "name": "背景机械",
+      "kind": "device",
+      "position": [
+        -2.4,
+        0.75,
+        0.6
+      ],
+      "size": [
+        0.8,
+        1.5,
+        0.8
+      ]
+    }
+  ],
+  "camera": {
+    "shot": "基底建立视点：桌面与两人正面关系，不冻结下游分镜",
+    "lensMm": 35,
+    "position": [
+      0.6,
+      1.35,
+      -2.6
+    ],
+    "target": [
+      0,
+      1.05,
+      -0.5
+    ],
+    "aspectRatio": "16:9",
+    "bodyView": "none",
+    "purpose": "只定空间关系"
+  },
+  "lighting": {
+    "key": "右侧大格窗天光，从画面右后照入桌面",
+    "fill": "依环境弱漫反射，暗部保留层次",
+    "mood": "低饱和低对比自然写实"
+  },
+  "continuity": [
+    "1桌2椅1柜；桌面固定陈设只有支架与直播手机，商品盒由片段 PROP 绑定",
+    "两把椅子 seatFor 各归其主，坐姿 y=座面 0.45",
+    "出入走右侧过道，不穿桌"
+  ],
+  "directorAnnotations": []
+}

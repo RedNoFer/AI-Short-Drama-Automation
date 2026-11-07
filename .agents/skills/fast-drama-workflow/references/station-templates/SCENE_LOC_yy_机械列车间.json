@@ -1,0 +1,214 @@
+{
+  "version": "1.0",
+  "scene": {
+    "id": "LOC_yy",
+    "name": "机械列车间（原型：老厂生产车间）",
+    "environment": "机械列沿西墙一字排开，南段为滚筒传送线与配电箱；地面褪色警示线；东墙高窗透天光。出入走东侧过道。",
+    "time": "白天",
+    "scale": "meters",
+    "coordinateConvention": "+X东、+Z南、+Y上；地坪 y=0；屏幕左右另随相机计算",
+    "geometryStatus": "原型模板量化；使用前按实际场景改坐标并复跑 validate_space_blocking.py"
+  },
+  "characters": [
+    {
+      "id": "CHAR_01",
+      "name": "决策者",
+      "color": "#958270",
+      "position": [
+        0.6,
+        0,
+        -0.4
+      ],
+      "facing": 0.963,
+      "facingTarget": [
+        -0.55,
+        0,
+        -1.2
+      ],
+      "posePreset": "stand",
+      "bodyType": "average",
+      "scale": 1
+    },
+    {
+      "id": "CHAR_02",
+      "name": "随行",
+      "color": "#958270",
+      "position": [
+        1.0,
+        0,
+        -0.1
+      ],
+      "facing": 0.9536,
+      "facingTarget": [
+        -0.55,
+        0,
+        -1.2
+      ],
+      "posePreset": "stand",
+      "bodyType": "slim",
+      "scale": 1
+    },
+    {
+      "id": "CHAR_05",
+      "name": "老师傅",
+      "color": "#958270",
+      "position": [
+        -0.55,
+        0,
+        -1.95
+      ],
+      "facing": -2.5033,
+      "facingTarget": [
+        0.6,
+        0,
+        -0.4
+      ],
+      "posePreset": "stand",
+      "bodyType": "stout",
+      "scale": 1
+    },
+    {
+      "id": "WORKER_A",
+      "name": "工人甲（深蓝工装）",
+      "color": "#958270",
+      "position": [
+        -1.55,
+        0,
+        -2.2
+      ],
+      "facing": 1.5708,
+      "facingTarget": [
+        -2.5,
+        0,
+        -2.2
+      ],
+      "posePreset": "stand",
+      "bodyType": "average",
+      "scale": 1
+    },
+    {
+      "id": "WORKER_B",
+      "name": "工人乙（深蓝工装）",
+      "color": "#958270",
+      "position": [
+        -1.55,
+        0,
+        -3.2
+      ],
+      "facing": 1.5708,
+      "facingTarget": [
+        -2.5,
+        0,
+        -3.2
+      ],
+      "posePreset": "stand",
+      "bodyType": "average",
+      "scale": 1
+    }
+  ],
+  "props": [
+    {
+      "id": "machine_1",
+      "name": "压盖机械一",
+      "kind": "device",
+      "position": [
+        -2.5,
+        0.75,
+        -2.2
+      ],
+      "size": [
+        0.9,
+        1.5,
+        1.4
+      ]
+    },
+    {
+      "id": "machine_2",
+      "name": "压盖机械二",
+      "kind": "device",
+      "position": [
+        -2.5,
+        0.75,
+        -3.2
+      ],
+      "size": [
+        0.9,
+        1.5,
+        1.4
+      ]
+    },
+    {
+      "id": "conveyor",
+      "name": "滚筒传送线",
+      "kind": "device",
+      "position": [
+        -1.6,
+        0.5,
+        -1.2
+      ],
+      "size": [
+        2.6,
+        1.0,
+        0.6
+      ]
+    },
+    {
+      "id": "switchbox",
+      "name": "配电箱",
+      "kind": "device",
+      "position": [
+        1.4,
+        0.9,
+        -1.3
+      ],
+      "size": [
+        0.4,
+        1.8,
+        0.25
+      ]
+    },
+    {
+      "id": "window_e",
+      "name": "东墙高窗",
+      "kind": "window",
+      "position": [
+        3.4,
+        1.8,
+        -1.8
+      ],
+      "size": [
+        0.1,
+        1.6,
+        3.0
+      ]
+    }
+  ],
+  "camera": {
+    "shot": "基底建立视点：机械列与过道关系",
+    "lensMm": 24,
+    "position": [
+      2.2,
+      1.5,
+      0.6
+    ],
+    "target": [
+      -1.5,
+      1.0,
+      -2.0
+    ],
+    "aspectRatio": "16:9",
+    "bodyView": "none",
+    "purpose": "只定空间关系"
+  },
+  "lighting": {
+    "key": "东墙高窗天光，光柱落在机械铁皮",
+    "fill": "依环境弱漫反射",
+    "mood": "低饱和低对比自然写实"
+  },
+  "continuity": [
+    "机械列与传送线为固定设备；工人按深蓝工装特征定位、不具名不加卡",
+    "走位走东侧过道，不穿机械与传送线",
+    "配电箱拉闸位在 CHAR_01 起点旁"
+  ],
+  "directorAnnotations": []
+}

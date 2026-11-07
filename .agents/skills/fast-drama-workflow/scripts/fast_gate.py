@@ -140,11 +140,16 @@ def main() -> int:
     if neg_issues:
         report["hard_errors"].append({"step": "0 否定写法预检", "items": neg_issues})
 
-    # 第 1 步：结构校验
-    rc, out, err = _run(
-        [sys.executable, str(SCRIPTS_DIR / "validate_compact_package.py"),
-         str(args.package), "--model", "wan30"]
-    )
+    # 第 1 步：结构校验（含站位交叉校验自动挂载——2026-11-07 站位必建升级：
+    # 包旁存在 内部/04b-站位图 时自动挂 --space-dir；未建目录的缺失/豁免判定
+    # 由 validate_compact_package 内部 fail-closed，不在此重复实现）
+    validate_cmd = [sys.executable, str(SCRIPTS_DIR / "validate_compact_package.py"),
+                    str(args.package), "--model", "wan30"]
+    space_dir = args.package.resolve().parent / "内部" / "04b-站位图"
+    if space_dir.is_dir():
+        validate_cmd += ["--space-dir", str(space_dir)]
+        report["space_check"] = f"已挂站位交叉校验：{space_dir}"
+    rc, out, err = _run(validate_cmd)
     full_out = (out or err)
     errors_i = [ln.strip() for ln in full_out.splitlines() if "错误：" in ln]
     warn_i = [ln.strip() for ln in full_out.splitlines() if "提醒：" in ln]
