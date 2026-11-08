@@ -105,6 +105,36 @@ def _negation_check(pkg: Path) -> list[dict]:
     return issues
 
 
+def _art_direction_check(pkg: Path) -> tuple[list[dict], list[str]]:
+    """第 0.6 步：C 阶段美术推导门（2026-11-08 用户指令）。
+
+    包旁 `内部/00-项目输入单.md` 存在时，必须含「美术推导」登记行——
+    题材→世界观→着装规范→场景符号→画风基线须在资产卡之前推导完成
+    （规范见 short-drama-workflow/references/art-direction-derivation.md）。
+    输入单不存在时跳过并在交付说明注明（旧项目重跑前须补登记）。
+    """
+    input_md = pkg.resolve().parent / "内部" / "00-项目输入单.md"
+    if not input_md.exists():
+        return [], [f"0.6 美术推导门：未找到 {input_md.name}，SKIP（旧项目重跑前须补登记）"]
+    text = input_md.read_text(encoding="utf-8", errors="replace")
+    if "美术推导" not in text:
+        return (
+            [
+                {
+                    "kind": "art_direction_missing",
+                    "segment": str(input_md),
+                    "detail": (
+                        "C 阶段美术推导门未过：输入单缺「美术推导」登记行——"
+                        "题材→世界观→着装规范→场景符号→画风基线须在资产卡前推导完成并落盘 "
+                        "内部/01-美术推导.md（规范见 short-drama-workflow/references/art-direction-derivation.md）"
+                    ),
+                }
+            ],
+            [],
+        )
+    return [], []
+
+
 def _fmt_issues(items: list[dict], limit: int = 12) -> list[str]:
     out = []
     for item in items[:limit]:
@@ -139,6 +169,13 @@ def main() -> int:
     neg_issues = _negation_check(args.package)
     if neg_issues:
         report["hard_errors"].append({"step": "0 否定写法预检", "items": neg_issues})
+
+    # 第 0.6 步：C 阶段美术推导门（2026-11-08 用户指令）
+    art_issues, art_notes = _art_direction_check(args.package)
+    if art_issues:
+        report["hard_errors"].append({"step": "0.6 美术推导门", "items": art_issues})
+    if art_notes:
+        report["skipped"].extend(art_notes)
 
     # 第 1 步：结构校验（含站位交叉校验自动挂载——2026-11-07 站位必建升级：
     # 包旁存在 内部/04b-站位图 时自动挂 --space-dir；未建目录的缺失/豁免判定
