@@ -23,6 +23,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from review_record import check_review, digest
+
 SCRIPTS_DIR = Path(__file__).resolve().parents[2] / "short-drama-workflow" / "scripts"
 
 PROMPT_BLOCK_RE = re.compile(r"####\s*视频提示词\s*\n+```text\n(.*?)```", re.S)
@@ -152,13 +155,19 @@ def main() -> int:
     parser.add_argument("package", type=Path, help="精简制作包 Markdown 文件")
     parser.add_argument("--novel", type=Path, default=None, help="源小说原文（可选）")
     parser.add_argument("--json", action="store_true", help="输出 JSON 报告")
+    parser.add_argument("--delivery", action="store_true", help="最终导出：同时检查内部/验收记录.json 的范围、引文与版本")
     args = parser.parse_args()
 
     report: dict = {"package": str(args.package), "hard_errors": [], "risks": [], "skipped": []}
+    report["scope"] = "delivery_record_and_mechanical" if args.delivery else "mechanical_only"
 
     if not args.package.exists():
         print(f"找不到文件：{args.package}", file=sys.stderr)
         return 2
+    report["package_sha256"] = digest(args.package)
+    if args.delivery and args.novel is None:
+        report["hard_errors"].append({"step": "交付依据", "items": [
+            {"detail": "最终交付须用 --novel 指定已登记源文范围，不能跳过摘录覆盖检查"}]})
 
     # 第 0 步：R39/TEXT-03 预检
     r39_issues = _r39_check(args.package)
@@ -278,6 +287,13 @@ def main() -> int:
             last = (out or err).strip().splitlines()[-1:] or [""]
             report["coverage_summary"] = last[0]
 
+    if args.delivery:
+        review_errors = check_review(args.package.resolve(), SCRIPTS_DIR)
+        if review_errors:
+            report["hard_errors"].append({"step": "4 最终验收版本", "items": [
+                {"detail": error} for error in review_errors]})
+        report["review_note"] = "只核验范围、引文及版本；不证明语义判断正确或实际图／成片通过"
+
     if bool(args.json):
         print(json.dumps(report, ensure_ascii=False, indent=2))
     else:
@@ -313,7 +329,10 @@ def main() -> int:
             print(f"\n结论：{sum(len(b.get('items', [])) for b in report['hard_errors'])} 条硬错，"
                   "清零前不得合评/交付。")
             return 1
-        print("\n结论：硬错为零，可进入合评清单（lean-checks.md）。")
+        if args.delivery:
+            print("\n结论：机械检查与验收记录一致性通过；实际素材及成片状态须分别核实。")
+        else:
+            print("\n结论：仅机械检查硬错为零，可进入合评；最终导出须加 --delivery。")
 
     return 1 if report["hard_errors"] else 0
 

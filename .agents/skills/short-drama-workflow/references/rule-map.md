@@ -1,5 +1,7 @@
 # 规则传播登记表
 
+2026-11-12 用户批准提示词模块整改：[共用质量契约](prompt-quality-contract.md)纳入快速档与完全体。R6／WAN30-06 改为检查参考层身份来源，不强制重复角色一致性句式；OUTFIT-04 接受参考层唯一着装职责，旧公共指针仅兼容读取且不得冲突。逐镜字数目标取消，事件覆盖与原文摘录覆盖分开，最终验收绑定文件指纹。历史案例仍保留原记录，不作为旧规则继续执行的依据。
+
 改任何一条规则前先查本表：**权威定义只允许在「定义文件」里改**，其余文件是引用/执行点，必须同步核对；涉及默认值改动升 `policy.json` 版本号并跑 `scripts/tests/`。改完在表底登记日期。
 
 图例：★定义文件（单一事实来源）；□执行/引用；⚙机检落点；▲反例案例。
@@ -46,7 +48,7 @@
 | R31 | **提示词分层与去重**：一个事实只写一处；资产图写全外观/空间/形制，不写镜头/台词/表演/剧情动作/第二套服装；视频只写机位/走位/动作/状态变化，不重写资产图已锁的脸、服装剪裁材质、建筑结构材质、道具尺寸纹样；角色一致性条款只写「姓名：身份外观遵循 CHAR_xx」指针，不写外貌词 | prompt-layering.md ★ | SKILL 阶段2/4、execution-checklist、asset-image-production、asset-reference-binding、prompt-review、wan30-prompt-spec、wan30-adapter、compact-import、outfit-variants | `validate_compact_package.py`（资产镜头/台词词、条款面料剪裁词、视频硬亮线、场景空镜人物/裸车；场景/道具细节簇提醒）；`validate_stage_artifacts.py --stage 2`（03b 分层段提醒） | LAYER-01、WAN30-04、SCENE-01 |
 | R32 | **参考图绑定与数量**：只绑定本段画内角色；建议总数 2–6 张，Wan3.0 硬上限 10 张；7–10 张允许，须在【参考】中逐项写清本段职责，不得为满足建议值删掉有效参考；同型角色不并挂，先靠硬锚拉距 | failure-cases.md WAN30-08★；wan30-prompt-spec.md §二/§四 | prompt-review（⑥硬规）、execution-checklist（阶段4）、wan30-adapter §4.1 | validate_compact_package（绑定角色超出画内人数提醒；>6 提示复核职责；>10 阻断） | WAN30-08 |
 | R33 | **角色一致性全包同源**：同一角色的锚词在全包逐字一致；禁止「遵循 CHAR_0X 参考图」这类无锚简版；改一处必须全量回灌 | failure-cases.md WAN30-09★、WAN30-06 | prompt-review（⑦分层与去重）、execution-checklist（阶段4）、SKILL 阶段4 | validate_compact_package（WAN30-09 提醒：同角色跨段锚词不一致） | WAN30-09 |
-| R34 | **Wan服装分层**：9:16全身人物资产图锁定默认全套服装（含下装、鞋）；视频正文只写指针式一致性条款，不重复任何服装细节（发型、饰件、外套品类、下装、鞋均由资产图承担）；状态变化写「在参考图基础上」，真换装走服装变体 PROP | failure-cases.md OUTFIT-03★、outfit-variants.md | 阶段2资产完整性、prompt-review（⑦）、execution-checklist（阶段4） | validate_compact_package（WAN30-04 禁止视频正文重复裤鞋） | OUTFIT-03（历史案例）、OUTFIT-01/02 |
+| R34 | **Wan服装分层**：人物资产图承担默认装；指定装 PROP 按穿着者、覆盖范围和适用镜头覆盖。参考层声明一次，不强制重复人物一致性段或公共着装指针；正文只写必要动作及状态变化，不复述服装设计 | prompt-quality-contract.md、outfit-variants.md | 阶段2资产、阶段4引用职责与语义合评 | validate_compact_package（WAN30-06、OUTFIT-04） | OUTFIT-03（历史案例）、OUTFIT-01/02 |
 | R35 | **文字物理规避**：画面可能出现可读文字（车牌、路牌、招牌、门牌、包装、屏幕）时，镜头行必须给物理手段（糊泥/雨水、避角、浅景深、前景遮挡、被身体挡住）；只写禁止项不算落实 | failure-cases.md TEXT-02★、TEXT-01 | prompt-review（⑥硬规）、wan30-prompt-spec §十一、execution-checklist（阶段4） | audit_wan30_antipatterns（legible_text_closeup_risk）＋抽帧核对 | TEXT-02、TEXT-01 |
 | R36 | **阶段3分镜完整覆盖阶段1计划**：逐镜片段 ID 与 `02a-结构化拍摄剧本.json` 的 episode/segment 清单一一对应；缺段、重复、计划外或只提交部分片段均阻断 | workflow-spec.md ★；阶段1/分镜映射在故事档案与 `02a` | SKILL（阶段3）、execution-checklist、multi-agent-execution、执行账 | `validate_stage_artifacts.py --stage 3`＋`test_stage_gates.py` | PROC-07 |
 | R37 | **字数与校验器失败关闭**：提示词长度只取项目登记轨的 profile；Wan 长度策略缺字段时不得回退 Seedance；`--tier` 仅限 Seedance；旧式 `validate_delivery.py` 拒绝 Wan/H3/未登记模型 | policy.json 分支 profile、model-branch-matrix.md ★ | AGENTS、SKILL、validation-contract、multi-agent-execution、failure-cases | `validate_compact_package.py`、`validate_delivery.py`＋分支回归测试 | PROC-07 |

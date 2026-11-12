@@ -737,12 +737,17 @@ class SequelValidatorTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertTrue(any("同款" in e for e in result["errors"]), result["errors"])
 
-    def test_wan30_missing_three_anchors_rejected(self):
-        """WAN30-06：绑定角色没有指针条款，远景全身会脱离参考图。"""
+    def test_wan30_identity_reference_needs_no_duplicate_clause(self):
+        """A valid identity reference is sufficient without a public pointer."""
         pkg = make_package(ratio="9:16", rows=WAN_ROWS, pad=WAN_PAD).replace(
             "【角色一致性】阿泽：黑色碎短发／左手腕旧手绳／深灰机能外套。", "")
         result = validator.validate(pkg, POLICY, model="wan30", space_exempt=True)
-        self.assertFalse(result["ok"])
+        self.assertFalse(any("WAN30-06" in e for e in result["errors"]), result["errors"])
+
+    def test_wan30_identity_reference_missing_rejected(self):
+        pkg = make_package(ratio="9:16", rows=WAN_ROWS, pad=WAN_PAD).replace(
+            "CHAR_01=阿泽外观锁定", "CHAR_01=本段出场")
+        result = validator.validate(pkg, POLICY, model="wan30", space_exempt=True)
         self.assertTrue(any("WAN30-06" in e for e in result["errors"]), result["errors"])
 
     def test_wan30_asset_rejects_side_gaze_and_three_quarter(self):
@@ -860,7 +865,7 @@ class VoiceOnlyAnchorTests(unittest.TestCase):
         self.assertEqual(self.check_phone_prompt(), [])
 
     def test_role_that_appears_still_requires_visual_anchor(self):
-        self.assertTrue(any("小林" in e and "身份外观遵循" in e for e in self.check_phone_prompt(appears=True)))
+        self.assertTrue(any("小林" in e and "WAN30-06" in e for e in self.check_phone_prompt(appears=True)))
 
 
 if __name__ == "__main__":

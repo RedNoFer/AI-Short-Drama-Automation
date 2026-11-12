@@ -37,14 +37,24 @@ class OutfitAuthorityTests(unittest.TestCase):
     def test_screenshot_double_authority_fails(self):
         self.assertTrue(check(role='身份与服装唯一基准（单人塑像图，全片不变）'))
 
+    def test_default_clothing_reference_conflicts_with_variant(self):
+        self.assertTrue(check(role='身份与默认着装基准', public=''))
+
     def test_identity_forever_is_not_clothing_lock(self):
         self.assertEqual(check(role='身份基准，全片不变'), [])
 
     def test_missing_role_reference_fails(self):
         self.assertTrue(check(role='参考图'))
 
-    def test_missing_clothing_pointer_fails(self):
-        self.assertTrue(check(public='娜琳：身份外观遵循 CHAR_01 人物参考图。'))
+    def test_reference_only_authority_passes(self):
+        self.assertEqual(check(public=''), [])
+
+    def test_partial_reference_only_authority_passes(self):
+        self.assertEqual(check(public='', scope='下装'), [])
+
+    def test_prop_owner_is_not_a_role_reference_declaration(self):
+        entries = v.reference_entries('PROP_08＝服装唯一基准，由 CHAR_01 穿着。')
+        self.assertNotIn('CHAR_01', entries)
 
     def test_wrong_clothing_pointer_fails(self):
         self.assertTrue(check(public='着装来源：CHAR_01＝PROP_09。'))

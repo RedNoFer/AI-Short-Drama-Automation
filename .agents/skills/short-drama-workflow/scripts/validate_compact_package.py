@@ -242,6 +242,35 @@ def character_usage(sections: dict, char_names: dict) -> dict:
     return {"used": used, "speakers": speakers, "ambiguous_voice_rows": ambiguous}
 
 
+def check_scene_mapping(prompt: str, scenes: list[str], label: str, errors: list[str]) -> None:
+    """Two-scene Wan fragments require explicit shot-level scene anchors."""
+    if len(scenes) > 2:
+        errors.append(f"{label}: 跨场景片段本次仅支持两个场景，更多场景须另行规划（SCENE-MAP）")
+        return
+    timeline = prompt.split("【时间轴】", 1)[-1].split("【收尾】", 1)[0]
+    used, previous = set(), None
+    rows = re.findall(r"^\d+(?:\.5)?-\d+(?:\.5)?秒[^\n]+", timeline, re.M)
+    for row in rows:
+        anchors = re.findall(r"场景锚[：:]\s*(LOC_[A-Za-z0-9_-]+)", row)
+        if len(anchors) != 1 or anchors[0] not in scenes:
+            errors.append(f"{label}: 跨场景逐镜须有一个已绑定场景锚（SCENE-MAP）")
+            continue
+        scene = anchors[0]
+        if previous is not None and scene != previous and "硬切" not in row:
+            errors.append(f"{label}: 场景切换须明确硬切并重建入口（SCENE-MAP）")
+        used.add(scene)
+        previous = scene
+    if used != set(scenes):
+        errors.append(f"{label}: 场景绑定与逐镜使用不一致（SCENE-MAP）")
+
+
+def reference_entries(reference: str) -> dict[str, str]:
+    """Read declarations only; a wearer code inside a prop's value is not a key."""
+    return dict(re.findall(
+        r"(?:^|[；。;\n])\s*((?:CHAR|LOC|PROP|CLUE)_[A-Za-z0-9_-]+)\s*[＝=]([^；。;\n]+)",
+        reference.removeprefix("【参考】")))
+
+
 def check_character_reference_closure(sections: dict, bindings: dict,
                                       char_names: dict, label: str,
                                       errors: list[str]) -> None:
@@ -315,10 +344,10 @@ def check_prompt(prompt: str, episode: str, shot: str, duration: int, bindings: 
             errors.append(
                 f"{label}: 参考里仍把角色卡写成四视图设定板——Wan3.0 已改为单人全身塑像图，"
                 "四视图不得进视频参考（WAN30-05）")
-        # WAN30-06：每个绑定角色都要有指针式【角色一致性】条款。完全没有条款时，近景吃图、远景吃文字，
-        # 全身与远景会脱离参考图自由发挥（替身千金 14 段全无锚点已实证）。
+        # WAN30-06 checks identity authority, not a duplicated public sentence.
         if char_names and bindings.get("角色"):
-            clause = re.search(r"(?:【角色一致性】|角色一致性[：:])([^【\n]*)", prompt)
+            reference = prompt.split("【参考】", 1)[-1].split("【公共总规范】", 1)[0]
+            entries = reference_entries(reference)
             missing = []
             for code in bindings["角色"]:
                 if code in voice_only:
@@ -326,12 +355,14 @@ def check_prompt(prompt: str, episode: str, shot: str, duration: int, bindings: 
                 name = _base_name(char_names.get(code, ""))
                 if not name:
                     continue
-                if not clause or not re.search(rf"{re.escape(name)}\s*[：:]", clause.group(1)):
+                authority = entries.get(code, "")
+                if not re.search(r"身份|人物|面部|外观", authority) or not re.search(
+                        r"基准|参考|锁定", authority):
                     missing.append(name)
             if missing:
                 errors.append(
-                    f"{label}: 角色 {('、'.join(missing))} 缺少指针式【角色一致性】条款"
-                    "（姓名：身份外观遵循 CHAR_xx 人物参考图，不写外貌词）（WAN30-06）")
+                    f"{label}: 角色 {('、'.join(missing))} 缺少【参考】身份来源职责"
+                    "（角色代码＝身份基准；无需重复角色一致性段）（WAN30-06）")
     # WAN30-03：应用按实际上传顺序生成「@图片N：类型「名称」」清单。
     # 正文 @ImageN 若与该清单错位，每个角色都会拿到别人的参考图。
     # 这段检查必须跑在段落结构校验之前——应用提交文本用的标题是【参考图片】而非【参考】。
@@ -1313,7 +1344,7 @@ def check_space_sync(parsed: dict, char_names: dict, space_dir: Path,
 
 
 def _anchor_segment(prompt: str, name: str) -> str:
-    """取【角色一致性】里某个角色的识别锚（第三项通常就是外套）。"""
+    """Read legacy public identity anchors for backward-compatible conflict checks."""
     body = prompt.split("【公共总规范】")[-1].split("【时间轴】")[0]
     match = re.search(re.escape(name) + r"[：:]([^；。\n]{1,120})", body)
     return match.group(1) if match else ""
@@ -1326,8 +1357,8 @@ def check_identity_and_reference_budget(episodes: list, char_names: dict,
                                         errors: list, warnings: list) -> dict:
     """WAN30-09 角色一致性全包同源 + WAN30-08 参考预算。
 
-    Wan 全身 9:16 角色参考图锁定全套服装；视频正文只保留指针式
-    【角色一致性】条款。外貌词不在正文重复，避免图文两套真值。
+    New packages declare identity/clothing authority in references once.
+    Legacy public anchors are still read to detect inconsistencies.
     """
     names = {re.split(r"[（(]", n)[0].strip() for n in char_names.values() if n}
     anchors: dict[str, dict[str, list[str]]] = {}
@@ -1432,15 +1463,7 @@ def check_outfit_consistency(parsed: dict, char_names: dict,
                         f"{label}: 服装资产 {code} 声明供 {owner} 穿着，"
                         f"但本片段没有绑定 {owner}")
                 owner_name = char_names.get(owner, "")
-                entry = ""
-                for line in reference.splitlines():
-                    if re.match(rf"\s*{re.escape(code)}\s*[＝=]", line):
-                        entry = line
-                        break
-                if not entry:
-                    # 单行参考块：截取该资产的子句
-                    _m = re.search(rf"{re.escape(code)}[^；。]*", reference)
-                    entry = _m.group(0) if _m else ""
+                entry = reference_entries(reference).get(code, "")
                 if owner and owner_name and owner_name not in entry and owner not in entry:
                     errors.append(
                         f"{label}: 服装资产 {code} 在【参考】里没有写明由谁穿着"
@@ -1454,22 +1477,26 @@ def check_outfit_consistency(parsed: dict, char_names: dict,
             # H3 uses its own fields/tags; this check is for four-section packages.
             if bound_outfits and "【参考】" in prompt:
                 def ref_entry(code):
-                    match = re.search(rf"(?<![A-Z0-9_]){re.escape(code)}\s*[＝=]([^；。\n]+)", reference)
-                    return match.group(1) if match else ""
+                    return reference_entries(reference).get(code, "")
 
                 public = prompt.split("【公共总规范】", 1)[-1].split("【时间轴】", 1)[0]
                 for owner in sorted({outfits[c] for c in bound_outfits if outfits[c]}):
                     role_ref = ref_entry(owner)
                     if not re.search(r"身份", role_ref) or re.search(
-                            r"身份与服装|服装唯一|(?:服装|着装)[^。；\n]{0,12}(?:全片不变|全剧不变)", role_ref):
+                            r"身份与(?:默认)?(?:服装|着装)|默认(?:服装|着装)|服装唯一|(?:服装|着装)[^。；\n]{0,12}(?:全片不变|全剧不变|全段不变)", role_ref):
                         errors.append(f"{label}: {owner} 已绑定换装资产，人物参考职责须为身份基准，"
                                       "不得同时锁默认服装或写全片不变（OUTFIT-04）")
                     owned = [c for c in bound_outfits if outfits[c] == owner]
                     for code in owned:
-                        # Explicit pointer, no repeated garment description.
-                        if not re.search(rf"{re.escape(owner)}\s*[＝=]\s*{re.escape(code)}(?![A-Z0-9_])", public):
-                            errors.append(f"{label}: 缺少着装来源指针 {owner}＝{code}；"
-                                          "在公共层写明服装覆盖关系（OUTFIT-04）")
+                        # Reference ownership is sufficient. Legacy public pointers
+                        # remain readable, but are not required on new packages.
+                        outfit_ref = ref_entry(code)
+                        if not outfit_ref:
+                            errors.append(f"{label}: 服装资产 {code} 缺少参考职责（OUTFIT-04）")
+                        pointers = re.findall(
+                            rf"{re.escape(owner)}\s*[＝=]\s*(PROP_[A-Za-z0-9_-]+)", public)
+                        if any(pointer not in owned for pointer in pointers):
+                            errors.append(f"{label}: {owner} 的旧着装指针与已绑定服装来源冲突（OUTFIT-04）")
                     if re.search(r"(?:每张|所有|全部)[^。\n]{0,45}(?:服装和配饰|服装与配饰|身份与服装)", public):
                         errors.append(f"{label}: 通用角色一致性句重新把服装交给全部人物图；"
                                       "身份与本段着装须分工（OUTFIT-04）")
@@ -2160,7 +2187,10 @@ def validate(source: str, policy: dict, model: str | None = None,
                 continue
             for kind, bound in shot["bindings"].items():
                 if kind == "场景" and len(bound) > 1:
-                    errors.append(f"{label}: 每片段至多绑定一个场景")
+                    if model == "wan30":
+                        check_scene_mapping(shot["prompts"]["视频提示词"], bound, label, errors)
+                    else:
+                        errors.append(f"{label}: 每片段至多绑定一个场景")
                 if len(bound) != len(set(bound)):
                     errors.append(f"{label}: {kind}绑定代码重复")
                 for code in bound:

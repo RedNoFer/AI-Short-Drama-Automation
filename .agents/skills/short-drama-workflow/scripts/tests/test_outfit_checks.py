@@ -109,7 +109,7 @@ def build(*, with_outfit_asset: bool = False, rows: str = ROWS_CASUAL,
 
 
 def run(package: str) -> tuple[list, list]:
-    result = validator.validate(package, POLICY)
+    result = validator.validate(package, POLICY, model="seedance25")
     return result["errors"], result["warnings"]
 
 
@@ -165,7 +165,7 @@ class OutfitCheckTest(unittest.TestCase):
 
     def test_outfit_asset_bound_and_named_passes(self):
         package = build(with_outfit_asset=True, props="道具：PROP_09\n",
-                        ref="PROP_09=本段服装唯一基准，由 CHAR_01 穿着；LOC_01=婚礼院子。")
+                        ref="CHAR_01=身份基准；PROP_09=本段服装唯一基准，由 CHAR_01 穿着；LOC_01=婚礼院子。")
         errors, _ = run(package)
         self.assertEqual([e for e in errors if "服装" in e], [])
 
@@ -218,7 +218,7 @@ class OutfitCheckTest(unittest.TestCase):
     def test_variant_bound_and_anchor_switched_passes(self):
         package = build(
             with_outfit_asset=True, props="道具：PROP_09\n",
-            ref="PROP_09=本段服装唯一基准，由 CHAR_01 穿着；LOC_01=婚礼院子。",
+            ref="CHAR_01=身份基准；PROP_09=本段服装唯一基准，由 CHAR_01 穿着；LOC_01=婚礼院子。",
             lock="【角色一致性】陈川：黑色短发／细金属框眼镜／深藏青羊毛西装外套。")
         errors, _ = run(package)
         self.assertEqual([e for e in errors if "服装" in e or "默认装" in e], [])
