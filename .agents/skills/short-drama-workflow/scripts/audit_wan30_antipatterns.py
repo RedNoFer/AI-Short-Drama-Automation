@@ -41,7 +41,9 @@ PROMPT = re.compile(r"#### 视频提示词\n\n```text\n([\s\S]*?)\n```")
 ROW = re.compile(r"^(\d+(?:\.5)?)-(\d+(?:\.5)?)秒[，,](.*)$")
 SHOT = re.compile(r"(大远景|远景|全景|中近景|中景|近景|大特写|特写|微距)")
 CAMERA_PREFIX = re.compile(r"^(?:硬切[，,。]\s*)?镜头[：:]")
-DECLARED_DIALOGUE_DURATION = re.compile(r"对白(?:时长)?\s*(\d+(?:\.\d+)?)\s*秒")
+DECLARED_DIALOGUE_DURATION = re.compile(
+    r"(?:对白(?:时长)?|原语朗读估时)\s*[：:]?\s*(\d+(?:\.\d+)?)\s*秒"
+)
 WARM_LIGHT_NEGATION = re.compile(r"(?:不添加|不采用|不出现|不使用|不加|避免|不做|不要|禁止|不得|无需|没有|未使用)[^，。；;]{0,12}$")
 GOLD_LIGHT_CONTEXT = re.compile(
     r"(?:金色|黄金色)(?:逆光|光线|光源|主光|灯光|滤镜|色调|照明|氛围|光照)|"
@@ -56,6 +58,10 @@ BODY = (
     "背影", "脚步", "脚下", "脚尖", "脚底", "脚踝", "膝盖", "呼吸",
     "喉结", "下颌", "睫毛", "目光", "视线", "胸口", "额头", "脸",
     "眼睛", "眼神", "眼底", "嘴角", "嘴唇", "脖子", "身体",
+    # 通用身体词补充（跨项目实测漏词：有表演线仍被判静物/空镜）。
+    "手掌", "拳头", "拳心", "拇指", "食指", "手肘", "胳膊", "手臂",
+    "后颈", "喉咙", "人头", "身影", "身形", "侧脸", "侧身", "步子",
+    "皮鞋", "鞋跟", "鞋底", "裤膝", "腰部", "腰际", "腰上",
 )
 # 静物判定用的载体词表。漏词会把「沙字／刻痕／字痕」这类纯静物镜误判为有人镜。
 PROPS = (
@@ -244,6 +250,11 @@ def bind_and_review_issues(issues: list[dict], segments: list[dict], cfg: dict,
 
 def audit(package: Path, policy_path: Path | None, review_record_path: Path | None = None) -> dict:
     text = package.read_text(encoding="utf-8")
+    # 角色名从包资产头派生（### 角色 CHAR_xx｜姓名）；跨项目硬编码名单只作兜底。
+    derived_chars = tuple(dict.fromkeys(
+        m.group(1).strip() for m in re.finditer(r"^### 角色 CHAR_[A-Za-z0-9]+｜(.+?)\s*$", text, re.M)
+    ))
+    chars = derived_chars + CHARS if derived_chars else CHARS
     policy = {}
     if policy_path and policy_path.exists():
         policy = json.loads(policy_path.read_text(encoding="utf-8"))
@@ -306,7 +317,7 @@ def audit(package: Path, policy_path: Path | None, review_record_path: Path | No
                     }
                 )
                 break
-        has_char = any(c in prompt for c in CHARS)
+        has_char = any(c in prompt for c in chars)
         if has_char and not any(x in prompt for x in ("不看镜头", "不朝镜头", "视线避开镜头")):
             no_gaze += 1
             issues.append(
@@ -322,7 +333,7 @@ def audit(package: Path, policy_path: Path | None, review_record_path: Path | No
         for line in prompt.splitlines():
             if not POSITIVE_GAZE.search(line):
                 continue
-            if not any(c in line for c in CHARS + GROUPS + BODY):
+            if not any(c in line for c in chars + GROUPS + BODY):
                 continue
             issues.append(
                 {
@@ -390,13 +401,13 @@ def audit(package: Path, policy_path: Path | None, review_record_path: Path | No
                         }
                     )
 
-            char_hit = any(c in body for c in CHARS + GROUPS)
+            char_hit = any(c in body for c in chars + GROUPS)
             body_hit = any(b in body for b in BODY)
             prop_hit = any(p in body for p in PROPS)
             has_dialogue = ('"' in body or "“" in body or "口型对白" in body)
 
             # --- 人物分身/身份预算（WAN30-02）---
-            named_count = sum(1 for c in CHARS if c in body)
+            named_count = sum(1 for c in chars if c in body)
             five_group = bool(FIVE_GROUP.search(body))
             if named_count > max_named_faces:
                 issues.append(

@@ -132,6 +132,23 @@ WAN_PAD = "一致性枚举：阿泽碎短发垂额、深灰冲锋衣、左手腕
 
 
 class CompactValidatorTests(unittest.TestCase):
+    def test_unclosed_text_fence_is_reported_not_silently_swallowed(self):
+        """实机回归（2026-11-12，北美版 E04–E10）：小说原文块缺收尾 ``` 会吞掉
+        SH01 标题与提示词且零报错；现在必须显式报「未闭合」并在标题处截断。"""
+        pkg = make_package()
+        # 在 E01 的小说原文块里删掉收尾 ```，使其吞掉后续「### 片段」标题
+        broken = pkg.replace("```\n\n### 片段 SH01", "\n\n### 片段 SH01", 1)
+        self.assertNotEqual(broken, pkg)
+        parsed = validator.parse_structure(broken)
+        # SH01 不被吞：块在标题处截断，解析在标题处恢复
+        self.assertEqual(
+            [sh["code"] for sh in parsed["episodes"][0]["shots"]], ["SH01"]
+        )
+        sh01 = parsed["episodes"][0]["shots"][0]
+        self.assertIn("视频提示词", sh01["prompts"], "SH01 的提示词必须完整保留")
+        self.assertNotIn("### 片段", parsed["episodes"][0]["novel"], "小说原文不得吞入片段标题")
+        self.assertTrue(any("未闭合" in e for e in parsed["errors"]), parsed["errors"])
+
     def test_space_timecode_accepts_unicode_dash_and_seconds_suffix(self):
         parsed = validator.parse_structure(make_package(rows=GOOD_ROWS))
         with tempfile.TemporaryDirectory() as d:

@@ -1022,10 +1022,23 @@ def parse_structure(source: str) -> dict:
             fence = line[:3]
             end = index
             while end < len(lines) and lines[end].strip() != fence:
+                cur = lines[end].strip()
+                # 结构防护：text 块未闭合就撞上结构性标题＝围栏缺失会静默吞掉
+                # 后续片段（实机：E04–E10 小说原文块缺收尾 ```，SH01 整段被吞、
+                # parse 无报错地少段）。novel 内合法的「### S1」等非结构标题不受影响。
+                if (
+                    cur.startswith("### 片段 ")
+                    or cur == "### 小说原文"
+                    or (cur.startswith("### ") and re.match(r"^### (角色|场景|道具|线索) ", cur))
+                ):
+                    break
                 end += 1
-            if end == len(lines):
-                errors.append(f"第 {index} 行 text 块缺少结束标记")
-                break
+            if end >= len(lines) or lines[end].strip() != fence:
+                errors.append(f"第 {index} 行 text 块缺少结束标记（在下一个结构标题前未闭合）")
+                if end >= len(lines):
+                    break
+                index = end
+                continue
             value = "\n".join(lines[index:end])
             if field == "novel":
                 current_episode["novel"] = value

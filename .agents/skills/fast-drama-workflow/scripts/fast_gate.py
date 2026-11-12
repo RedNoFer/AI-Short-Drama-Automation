@@ -284,8 +284,9 @@ def main() -> int:
                  "items": [{"detail": " ".join(tail)[:400]}]}
             )
         else:
-            last = (out or err).strip().splitlines()[-1:] or [""]
-            report["coverage_summary"] = last[0]
+            lines_out = (out or err).strip().splitlines() or [""]
+            summary = next((l for l in lines_out if "覆盖率" in l), lines_out[-1])
+            report["coverage_summary"] = summary
 
     if args.delivery:
         review_errors = check_review(args.package.resolve(), SCRIPTS_DIR)
