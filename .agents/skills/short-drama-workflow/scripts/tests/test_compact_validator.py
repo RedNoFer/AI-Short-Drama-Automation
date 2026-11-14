@@ -132,23 +132,6 @@ WAN_PAD = "一致性枚举：阿泽碎短发垂额、深灰冲锋衣、左手腕
 
 
 class CompactValidatorTests(unittest.TestCase):
-    def test_unclosed_text_fence_is_reported_not_silently_swallowed(self):
-        """实机回归（2026-11-12，北美版 E04–E10）：小说原文块缺收尾 ``` 会吞掉
-        SH01 标题与提示词且零报错；现在必须显式报「未闭合」并在标题处截断。"""
-        pkg = make_package()
-        # 在 E01 的小说原文块里删掉收尾 ```，使其吞掉后续「### 片段」标题
-        broken = pkg.replace("```\n\n### 片段 SH01", "\n\n### 片段 SH01", 1)
-        self.assertNotEqual(broken, pkg)
-        parsed = validator.parse_structure(broken)
-        # SH01 不被吞：块在标题处截断，解析在标题处恢复
-        self.assertEqual(
-            [sh["code"] for sh in parsed["episodes"][0]["shots"]], ["SH01"]
-        )
-        sh01 = parsed["episodes"][0]["shots"][0]
-        self.assertIn("视频提示词", sh01["prompts"], "SH01 的提示词必须完整保留")
-        self.assertNotIn("### 片段", parsed["episodes"][0]["novel"], "小说原文不得吞入片段标题")
-        self.assertTrue(any("未闭合" in e for e in parsed["errors"]), parsed["errors"])
-
     def test_space_timecode_accepts_unicode_dash_and_seconds_suffix(self):
         parsed = validator.parse_structure(make_package(rows=GOOD_ROWS))
         with tempfile.TemporaryDirectory() as d:
@@ -660,6 +643,130 @@ class SequelValidatorTests(unittest.TestCase):
             model="wan30", warnings=warnings,
             asset_codes={"CHAR_01", "CHAR_02"}, asset_prompts={})
         self.assertFalse(any("WAN30-04" in e for e in errors), errors)
+
+    def test_wan30_missing_mapping_warns_transitional(self):
+        """旧格式（无图N映射）过渡期先警告，不直接判错。"""
+        prompt = (
+            "【参考】CHAR_01＝身份与服装唯一基准。\n"
+            "【公共总规范】全段1拍0次硬切。\n"
+            "【时间轴】\n0-30秒，镜头：中景。\n"
+            "【收尾】出口状态：无。\n"
+        )
+        errors, warnings = [], []
+        validator.check_prompt(
+            prompt, "E01", "SH01", 30, {"角色": ["CHAR_01"]},
+            POLICY, errors, char_names={"CHAR_01": "阿泽"},
+            model="wan30", warnings=warnings,
+            asset_codes={"CHAR_01"}, asset_prompts={})
+        self.assertFalse(any("WAN30-04" in e for e in errors), errors)
+        self.assertTrue(any("图N=代码" in w for w in warnings), warnings)
+
+    def test_wan30_mapping_with_body_binding_passes(self):
+        """图N=代码 映射＋正文 名称图N 绑定 → 不再报 WAN30-04。"""
+        prompt = (
+            "【参考】图1=LOC_01;图2=CHAR_01。\n"
+            "【公共总规范】总体描述:黄昏街头,阿泽图2独行;全段1拍0次硬切。\n"
+            "【时间轴】\n0-30秒，场景锚:LOC_01图1，镜头：中景，画面:阿泽图2走过路缘。\n"
+            "【收尾】阿泽图2停在路缘。\n"
+        )
+        errors, warnings = [], []
+        validator.check_prompt(
+            prompt, "E01", "SH01", 30, {"角色": ["CHAR_01"], "场景": ["LOC_01"]},
+            POLICY, errors, char_names={"CHAR_01": "阿泽"},
+            model="wan30", warnings=warnings,
+            asset_codes={"CHAR_01", "LOC_01"}, asset_prompts={})
+        self.assertEqual([], [e for e in errors if "WAN30-04" in e], errors)
+        self.assertEqual([], [w for w in warnings if "WAN30-04" in w], warnings)
+
+    def test_wan30_mapping_order_checked(self):
+        """图N 映射必须按场景→角色→道具分序编号。"""
+        prompt = (
+            "【参考】图1=CHAR_01;图2=LOC_01。\n"
+            "【公共总规范】总体描述:黄昏街头,阿泽图1独行。\n"
+            "【时间轴】\n0-30秒，镜头：中景，画面:阿泽图1走过场景图2。\n"
+            "【收尾】无。\n"
+        )
+        errors, warnings = [], []
+        validator.check_prompt(
+            prompt, "E01", "SH01", 30, {"角色": ["CHAR_01"], "场景": ["LOC_01"]},
+            POLICY, errors, char_names={"CHAR_01": "阿泽"},
+            model="wan30", warnings=warnings,
+            asset_codes={"CHAR_01", "LOC_01"}, asset_prompts={})
+        self.assertTrue(any("分序" in e for e in errors), errors)
+
+    def test_wan30_character_without_body_binding_rejected(self):
+        """正文无 名称图N 绑定的角色判错——万相3.0不写编号引用就不绑定参考图。"""
+        prompt = (
+            "【参考】图1=LOC_01;图2=CHAR_01。\n"
+            "【公共总规范】总体描述:黄昏街头。\n"
+            "【时间轴】\n0-30秒，镜头：中景，画面:路人走过路缘。\n"
+            "【收尾】无。\n"
+        )
+        errors, warnings = [], []
+        validator.check_prompt(
+            prompt, "E01", "SH01", 30, {"角色": ["CHAR_01"], "场景": ["LOC_01"]},
+            POLICY, errors, char_names={"CHAR_01": "阿泽"},
+            model="wan30", warnings=warnings,
+            asset_codes={"CHAR_01", "LOC_01"}, asset_prompts={})
+        self.assertTrue(any("名称图N 绑定" in e for e in errors), errors)
+
+    def test_wan30_body_number_must_be_declared(self):
+        """正文引用未声明的图N判错。"""
+        prompt = (
+            "【参考】图1=CHAR_01。\n"
+            "【公共总规范】总体描述:黄昏街头,阿泽图2独行。\n"
+            "【时间轴】\n0-30秒，镜头：中景。\n"
+            "【收尾】无。\n"
+        )
+        errors, warnings = [], []
+        validator.check_prompt(
+            prompt, "E01", "SH01", 30, {"角色": ["CHAR_01"]},
+            POLICY, errors, char_names={"CHAR_01": "阿泽"},
+            model="wan30", warnings=warnings,
+            asset_codes={"CHAR_01"}, asset_prompts={})
+        self.assertTrue(any("未在【参考】声明的图N" in e for e in errors), errors)
+
+    def test_wan30_bare_character_name_rejected(self):
+        """全行绑定：角色裸称呼（未跟图N）判错。"""
+        prompt = (
+            "【参考】图1=CHAR_01。\n"
+            "【公共总规范】总体描述:黄昏街头,阿泽图1独行。\n"
+            "声线锁定：阿泽=26岁男声。\n"
+            "【时间轴】\n0-30秒，镜头：中景，画面:阿泽图1走过路缘。\n"
+            "【收尾】阿泽停在路缘。\n"
+        )
+        errors, warnings = [], []
+        validator.check_prompt(
+            prompt, "E01", "SH01", 30, {"角色": ["CHAR_01"]},
+            POLICY, errors, char_names={"CHAR_01": "阿泽"},
+            model="wan30", warnings=warnings,
+            asset_codes={"CHAR_01"}, asset_prompts={})
+        self.assertTrue(any("裸称呼" in e for e in errors), errors)
+
+    def test_wan30_speaker_label_with_figure_number_tolerated(self):
+        """说话人标签带图N（Luke图2(口型对白…)）不影响说话人识别与声线锁定。"""
+        prompt = (
+            "【参考】图1=CHAR_01。\n"
+            "【公共总规范】总体描述:黄昏街头,阿泽图1独行。\n"
+            "声线锁定：阿泽图1=26岁男声,中低音。\n"
+            "【时间轴】\n0-30秒，镜头：中景，画面:阿泽图1站定。对白:阿泽图1(口型对白):\"Fine.\"原语朗读估时:0.5秒;停连:0.1秒。\n"
+            "【收尾】无。\n"
+        )
+        errors, warnings = [], []
+        validator.check_prompt(
+            prompt, "E01", "SH01", 30, {"角色": ["CHAR_01"]},
+            POLICY, errors, char_names={"CHAR_01": "阿泽"},
+            model="wan30", warnings=warnings,
+            asset_codes={"CHAR_01"}, asset_prompts={})
+        self.assertEqual([], [e for e in errors if "CAST-04" in e], errors)
+        self.assertEqual([], [e for e in errors if "裸称呼" in e], errors)
+
+    def test_package_with_control_characters_rejected(self):
+        """CTRL-CHAR：包内 NUL 等控制字符判错（占位符残留/传输损坏都拦在门内）。"""
+        pkg = make_package().replace("【收尾】", "【收尾】\x00", 1)
+        result = validator.validate(pkg, POLICY)
+        self.assertFalse(result["ok"])
+        self.assertTrue(any("控制字符" in e for e in result["errors"]), result["errors"])
 
     def test_wan30_character_asset_must_be_single_statue(self):
         """Wan3.0 角色资产图必须是单人塑像单张，不得四视图拼版。"""

@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import prompt_contracts
+from style_contracts import check_style, check_style_review
 
 ASSET = re.compile(r"^### (角色|场景|道具|线索) ([A-Za-z][A-Za-z0-9_-]*)｜(.+)$")
 ASSET_PROMPT_METADATA = re.compile(
@@ -34,11 +35,15 @@ H3_SPEAKER = re.compile(r"\((S\d+)\)")
 H3_DIALOG = re.compile(r"<d>(.*?)</d>", re.S)
 H3_LABEL = re.compile(r"<(Subject|Picture|Video|Audio)\s+(\d+)>")
 # Uploaded-image numbers. The MD carries no image attachments, so Seedance
-# and H3 tracks must not pre-write them; the Wan3.0 track legitimately
-# binds real references with @ImageN and is checked for numbering and
-# binding consistency instead.
+# and H3 tracks must not pre-write them; the Wan3.0 track binds references
+# with the 图N=代码 mapping in 【参考】 plus 名称图N adjacency in the body,
+# while @ImageN/@图片N stay app-rendered forms and are rejected in packages.
 IMAGE_NUMBER = re.compile(r"@(?:Image|图片)\s*\d+")
 IMAGE_BINDING = re.compile(r"@(?:Image|图片)\s*(\d+)\s*[＝=]\s*([A-Za-z][A-Za-z0-9_-]*)")
+# Wan3.0 图N=资产代码 映射与正文 名称图N 绑定（2026-11-14 规范翻转，
+# 见 references/asset-reference-binding.md 第三节）。
+WAN30_REF_MAP = re.compile(r"图(\d+)\s*[＝=]\s*((?:CHAR|LOC|PROP|CLUE)_[A-Za-z0-9_-]+)")
+WAN30_BODY_NUM = re.compile(r"图(\d+)")
 # 应用生成参考清单的行形态：@图片2：角色「阿泽（全队领队）」
 IMAGE_LEDGER_ITEM = re.compile(
     r"@(?:图片|Image)\s*(\d+)\s*[：:]\s*(角色|场景|道具|线索)\s*[「\"]([^」\"\n]+)[」\"]")
@@ -201,6 +206,11 @@ def character_usage(sections: dict, char_names: dict) -> dict:
     """Extract explicit sources; leave ambiguous pronouns for independent review."""
     timeline = sections.get("【时间轴】", "")
     names = {c: _base_name(n) for c, n in char_names.items()}
+    # 全行绑定后说话人标签形如「Luke图2(口型对白…」；先剥掉称呼后的图N
+    # 再做说话人识别，识别结果不受绑定写法影响。
+    if names:
+        choices = "|".join(re.escape(x) for c, n in names.items() for x in (n, c) if x)
+        timeline = re.sub(rf"({choices})图\d+", r"\1", timeline)
     unquote = lambda t: re.sub(r'中文义[：:][^）)\n]*|“[^”\n]*”|"[^"\n]*"|「[^」\n]*」', '', t)
     action = re.sub(r"[（(]空间[：:].*$", "", unquote(timeline), flags=re.M)
     def visible_mention(code, name):
@@ -282,7 +292,11 @@ def check_character_reference_closure(sections: dict, bindings: dict,
     """
     usage = character_usage(sections, char_names or {})
     bound = set(bindings.get("角色", []))
-    refs = set(re.findall(r"\b(CHAR_[A-Za-z0-9_-]+)\s*[＝=]", sections.get("【参考】", "")))
+    ref_section = sections.get("【参考】", "")
+    refs = set(re.findall(r"\b(CHAR_[A-Za-z0-9_-]+)\s*[＝=]", ref_section))
+    # 图N=代码 映射里代码写在等号右侧，同样视为已声明。
+    refs |= {code for _, code in WAN30_REF_MAP.findall(ref_section)
+             if code.startswith("CHAR_")}
     public = sections.get("【公共总规范】", "")
     consistency = re.search(r"(?:角色一致性[：:]|【角色一致性】)([^。\n]+)", public)
     voice = re.search(r"声线锁定[：:]([^\n]+)", public)
@@ -300,11 +314,119 @@ def check_character_reference_closure(sections: dict, bindings: dict,
         identity_elsewhere = re.search(re.escape(name) + r"(?:[：:]|素颜|薄妆|浓妆)", re.sub(r"^声线锁定[^\n]*", "", public, flags=re.M))
         if ((consistency and name in consistency.group(1)) or identity_elsewhere) and code not in bound:
             errors.append(f"{label}: 公共人物身份列出未绑定角色 {name}（CAST-03）")
-        locked = bool(re.search(rf"(?:{re.escape(name)}|{re.escape(code)})\s*[＝=：:]", voice_text))
+        locked = bool(re.search(
+            rf"(?:{re.escape(name)}|{re.escape(code)})(?:图\d+)?\s*[＝=：:]", voice_text))
         if code in usage["speakers"] and not locked:
             errors.append(f"{label}: 实际说话人 {name} 缺少声线锁定（CAST-04）")
         if locked and code not in usage["speakers"] and not usage["ambiguous_voice_rows"]:
             errors.append(f"{label}: 声线锁定列出本段未发声角色 {name}（CAST-04）")
+
+
+WAN30_KIND_RANK = {"LOC_": 0, "CHAR_": 1, "PROP_": 2, "CLUE_": 3}
+
+
+def _code_rank(code: str) -> int:
+    return next((rank for prefix, rank in WAN30_KIND_RANK.items()
+                 if code.startswith(prefix)), 9)
+
+
+def _code_sort_key(code: str):
+    match = re.search(r"(\d+)$", code)
+    return (_code_rank(code), int(match.group(1)) if match else 0, code)
+
+
+def check_wan30_numbering(prompt: str, mapping: list, bindings: dict,
+                          char_names: dict, asset_codes, asset_prompts,
+                          label: str, errors: list, warnings: list) -> None:
+    """WAN30-04：图N=代码 映射从 1 连续、按场景→角色→道具分序、覆盖绑定资产；
+    正文绑定 名称图N；正文编号必须已声明。"""
+    numbers = [int(number) for number, _ in mapping]
+    if sorted(numbers) != list(range(1, len(numbers) + 1)):
+        errors.append(f"{label}: 图N 映射必须从 1 连续编号，当前为 {sorted(numbers)}（WAN30-04）")
+    kinds = [_code_rank(code) for _, code in mapping]
+    if kinds != sorted(kinds):
+        errors.append(
+            f"{label}: 图N 映射必须按 场景→角色→道具 分序编号，当前为 "
+            + "、".join(f"图{number}={code}" for number, code in mapping) + "（WAN30-04）")
+    for (_, code_left), (_, code_right) in zip(mapping, mapping[1:]):
+        if (_code_rank(code_left) == _code_rank(code_right)
+                and _code_sort_key(code_left) > _code_sort_key(code_right)):
+            errors.append(
+                f"{label}: 同类资产在图N 映射中必须按代码升序：{code_left} 排在 {code_right} 前"
+                "（WAN30-04）")
+    bound_all = {code for codes in bindings.values() for code in codes}
+    mapped_codes = {code for _, code in mapping}
+    for code in sorted(bound_all - mapped_codes):
+        errors.append(f"{label}: 绑定资产 {code} 未进入图N 映射（WAN30-04）")
+    for number, code in mapping:
+        if asset_codes is not None and code not in asset_codes:
+            errors.append(
+                f"{label}: 图{number} 指向 {code}，但该资产在固定资产区没有定义（WAN30-04）")
+        base = code[:-6] if code.endswith("_PHOTO") else code
+        if code not in bound_all and base not in bound_all:
+            warnings.append(
+                f"{label}: 图{number} 指向 {code}，该资产未绑定到本片段"
+                "（跨场承接引用时属正常，确认不是漏绑）")
+        asset_prompt = (asset_prompts or {}).get(code, "")
+        if asset_prompt:
+            # 负向限制清单与否定句里提到「四视图」是禁止声明，不是版式声明
+            affirmed = re.sub(r"负向限制[：:][^\n]*", "", asset_prompt)
+            affirmed = _strip_negated_terms(affirmed)
+            if "四视图" in affirmed:
+                errors.append(
+                    f"{label}: 图{number} 指向 {code}，但该角色资产是白底四视图设定板——"
+                    "本轨视频参考必须是单人全身塑像图（WAN30-01 硬规则 1）")
+    body = prompt.split("【公共总规范】", 1)[-1]
+    body_compact = re.sub(r"\s", "", body)
+    body_numbers = {int(number) for number in WAN30_BODY_NUM.findall(body_compact)}
+    unknown = sorted(body_numbers - set(numbers))
+    if unknown:
+        errors.append(
+            f"{label}: 正文引用了未在【参考】声明的图N {unknown}——编号必须与映射一致（WAN30-04）")
+    for code in sorted(bound_all & mapped_codes):
+        number = next(number for number, mapped in mapping if mapped == code)
+        kind = KIND_PREFIX.get(next((prefix for prefix in KIND_PREFIX
+                                     if code.startswith(prefix)), ""), "")
+        if kind == "角色":
+            name = _base_name(char_names.get(code, ""))
+            # 正文可能只写名（Luke图2）而非资产卡全名（Luke Lawson）；
+            # 资产卡标题大小写与正文未必一致，统一按大小写不敏感匹配
+            tokens = {code}
+            if name:
+                tokens.add(name)
+                for part in re.split(r"[\s··]+", name):
+                    if len(part) >= 2:
+                        tokens.add(part)
+                        # 混合名（Diner老板）：正文常只用 CJK 段称呼
+                        for m in re.finditer(r"[\u4e00-\u9fff]{2,}", part):
+                            tokens.add(m.group(0))
+            if not any(re.search(re.escape(token) + r"图" + str(number),
+                                 body_compact, re.I) for token in tokens):
+                errors.append(
+                    f"{label}: 角色 {name or code}（图{number}）在正文无 名称图N 绑定——"
+                    "万相3.0 正文不写编号引用就不绑定参考图，人物会随机生成（WAN30-04）")
+            # 全行绑定：称呼出现处（台词引语除外）必须紧跟图N，裸称呼＝绑定不完整
+            nonref = re.sub(r"【参考】[^【]*", "", prompt, flags=re.S)
+            nonref = QUOTED_SPEECH.sub("", TRANSLATION_NOTE.sub("", nonref))
+            bare_spots = []
+            for token in sorted(tokens, key=len, reverse=True):
+                pat = re.escape(token)
+                # 拉丁字母 token 加词边界,防止子串误报(实机:Sterling 内的 lin 撞 Chloe Lin 的 Lin)
+                if re.fullmatch(r"[A-Za-z0-9_\s]+", token):
+                    pat = r"(?<![A-Za-z])" + pat + r"(?![A-Za-z])"
+                if not re.search(pat, nonref, re.I):
+                    continue
+                for m in re.finditer(pat, nonref, re.I):
+                    if not re.match(r"图\d+", nonref[m.end():m.end() + 4]):
+                        ctx = nonref[max(0, m.start() - 10):m.end() + 12]
+                        bare_spots.append(ctx.replace("\n", "⏎"))
+            if bare_spots:
+                errors.append(
+                    f"{label}: 角色 {name or code}（图{number}）有 {len(bare_spots)} 处裸称呼未带图N，"
+                    f"如「…{bare_spots[0]}…」——凡引用资产必须 名称图N，全行绑定（WAN30-04）")
+        elif f"图{number}" not in body_compact:
+            warnings.append(
+                f"{label}: {kind}资产 {code}（图{number}）在正文无图N 绑定（WAN30-04）")
 
 
 def check_prompt(prompt: str, episode: str, shot: str, duration: int, bindings: dict,
@@ -330,11 +452,24 @@ def check_prompt(prompt: str, episode: str, shot: str, duration: int, bindings: 
                                errors, warnings, extra_fields=extra_fields)
     usage = character_usage({"【时间轴】": prompt.split("【时间轴】", 1)[-1].split("【收尾】", 1)[0]}, char_names or {})
     voice_only = usage["speakers"] - usage["used"]
-    # WAN30-04：包内不得写编号。编号由应用按上传顺序生成，离线包写死必然错位。
-    if model == "wan30" and IMAGE_NUMBER.search(prompt):
-        errors.append(
-            f"{label}: Wan3.0 轨包内禁止写 @ImageN/@图片N——编号由应用按实际上传顺序生成，"
-            "离线包写死必然与参考清单错位；请改用资产名称点名（WAN30-04）")
+    # WAN30-04（2026-11-14 翻转）：Wan3.0 轨【参考】写 图N=代码 映射、正文 名称图N 绑定；
+    # @ImageN/@图片N 是应用渲染形态，包内出现即判错。正文 0 处编号引用＝模型不绑定
+    # 参考图、全员随机脸（美元贬值 E01-SH01 实证；官方要求≥2素材必须写编号）。
+    wan30_map: list = []
+    if model == "wan30":
+        if IMAGE_NUMBER.search(prompt):
+            errors.append(
+                f"{label}: Wan3.0 轨包内禁止写 @ImageN/@图片N——那是应用按上传槽位渲染的形态；"
+                "包内只写 图N=代码 映射与正文 名称图N 绑定（WAN30-04）")
+        reference = prompt.split("【参考】", 1)[-1].split("【公共总规范】", 1)[0]
+        wan30_map = WAN30_REF_MAP.findall(reference)
+        if wan30_map:
+            check_wan30_numbering(prompt, wan30_map, bindings, char_names or {},
+                                  asset_codes, asset_prompts, label, errors, warnings)
+        elif any(codes for codes in bindings.values()):
+            warnings.append(
+                f"{label}: 【参考】未按 图N=代码 映射改写——万相3.0 正文无编号引用时不绑定参考图，"
+                "人物会全部随机；按 asset-reference-binding.md 第三节改写（WAN30-04 过渡期警告）")
     if model == "wan30":
         if DENY_REF.search(prompt):
             errors.append(
@@ -345,7 +480,8 @@ def check_prompt(prompt: str, episode: str, shot: str, duration: int, bindings: 
                 f"{label}: 参考里仍把角色卡写成四视图设定板——Wan3.0 已改为单人全身塑像图，"
                 "四视图不得进视频参考（WAN30-05）")
         # WAN30-06 checks identity authority, not a duplicated public sentence.
-        if char_names and bindings.get("角色"):
+        # 图N 映射在【参考】声明了每个角色的身份条目，职责文本要求对映射卡豁免。
+        if char_names and bindings.get("角色") and not wan30_map:
             reference = prompt.split("【参考】", 1)[-1].split("【公共总规范】", 1)[0]
             entries = reference_entries(reference)
             missing = []
@@ -388,6 +524,26 @@ def check_prompt(prompt: str, episode: str, shot: str, duration: int, bindings: 
                         errors.append(
                             f"{label}: 参考清单写 @图片{number}＝「{ledger_name}」，"
                             f"正文写 {code}「{base}」——编号错位，角色会拿到别人的参考图（WAN30-03）")
+            # 图N 映射与应用展开清单双核对（名字＋编号，WAN30-03）
+            for number, code in wan30_map:
+                entry = ledger.get(int(number))
+                kind = next((value for prefix, value in KIND_PREFIX.items()
+                             if code.startswith(prefix)), None)
+                if entry is None or kind is None:
+                    continue
+                ledger_kind, ledger_name = entry
+                if ledger_kind != kind:
+                    errors.append(
+                        f"{label}: 应用清单 @图片{number}＝{ledger_kind}「{ledger_name}」，"
+                        f"映射却写 图{number}={code}（{kind}）——编号错位，须重排上传顺序"
+                        "（WAN30-03）")
+                elif kind == "角色" and char_names:
+                    base = char_names.get(code, "")
+                    if base and _base_name(base) != _base_name(ledger_name):
+                        errors.append(
+                            f"{label}: 应用清单 @图片{number}＝「{ledger_name}」，"
+                            f"映射写 图{number}={code}「{base}」——编号错位，"
+                            "角色会拿到别人的参考图（WAN30-03）")
         # 正文行内指代「阿泽（@Image1）」也要与清单对得上
         if ledger:
             for name, number in INLINE_IMAGE_REF.findall(prompt):
@@ -963,6 +1119,7 @@ def parse_structure(source: str) -> dict:
     """Parse the import skeleton of a compact package: assets, episodes, structure errors."""
     lines = source.replace("\r\n", "\n").replace("\r", "\n").split("\n")
     errors: list[str] = []
+    title_warnings: list[str] = []
     assets: list[dict] = []
     episodes: list[dict] = []
     scope = None
@@ -995,6 +1152,12 @@ def parse_structure(source: str) -> dict:
         if scope == "assets" and asset_match:
             current_asset = {"kind": asset_match[1], "code": asset_match[2],
                              "name": asset_match[3].strip(), "prompt": ""}
+            # 应用端登记规范：标题应为止纯资产名；括号注记会被复制进应用资产
+            # 登记，随每次提交的 @图片N 清单持续渲染进提示词（2026-11-14 实证）
+            if re.search(r"[（(]", current_asset["name"]):
+                title_warnings.append(
+                    f"资产卡 {asset_match[2]} 标题含括号注记「{current_asset['name']}」——"
+                    "登记应用时只复制括号前纯资产名、描述字段留空；建议直接把标题改为纯名")
             assets.append(current_asset)
             field = None
             continue
@@ -1061,7 +1224,8 @@ def parse_structure(source: str) -> dict:
                 current_shot["bindings"][binding_match[1]] = codes
             continue
         errors.append(f"第 {index} 行无法识别：{line[:60]}")
-    return {"assets": assets, "episodes": episodes, "errors": errors}
+    return {"assets": assets, "episodes": episodes, "errors": errors,
+            "title_warnings": title_warnings}
 
 
 def build_sequel_index(parsed: dict) -> dict:
@@ -1141,9 +1305,19 @@ def _space_overlays(space_dir: Path) -> dict:
             continue
         shot = str(doc.get("shot") or "")
         parts = shot.split("_")
-        if len(parts) < 3:
-            continue
-        episode, fragment = parts[0], parts[1]
+        if len(parts) >= 3:
+            episode, fragment = parts[0], parts[1]
+        else:
+            # 兼容 E01-E03 存量增量（shot="S03" + segment="E01-SH01"）：
+            # 索引时升格为全 ID，下游 _S(\d+)$ 对齐逻辑保持不变。
+            seg_id = str(doc.get("segment") or "")
+            m_seg = re.fullmatch(r"(E\d+)-([A-Za-z0-9]+)", seg_id)
+            m_shot = re.fullmatch(r"S(\d+)", shot)
+            if not (m_seg and m_shot):
+                continue
+            episode, fragment = m_seg.group(1), m_seg.group(2)
+            doc = dict(doc)
+            doc["shot"] = f"{episode}_{fragment}_{shot}"
         index.setdefault(episode, {}).setdefault(fragment, []).append(doc)
     for episodes in index.values():
         for docs in episodes.values():
@@ -1151,8 +1325,20 @@ def _space_overlays(space_dir: Path) -> dict:
     return index
 
 
-def _normalize_space_timecode(value: str) -> str:
-    """Normalize W18 ranges such as ``0–2秒`` to the prompt's ``0-2`` form."""
+def _normalize_space_timecode(value) -> str:
+    """Normalize W18 ranges such as ``0–2秒`` to the prompt's ``0-2`` form.
+
+    兼容存量增量的 dict 形态 {"start": 6.5, "end": 9.5}（E01-E03 交付格式，
+    数值与正文一致时不得因字符串化误报不一致）。
+    """
+    if isinstance(value, dict):
+        def _fmt(x):
+            f = float(x)
+            return str(int(f)) if f == int(f) else str(f)
+        try:
+            return f"{_fmt(value.get('start'))}-{_fmt(value.get('end'))}"
+        except (TypeError, ValueError):
+            return str(value)
     match = re.fullmatch(
         r"\s*(\d+(?:\.5)?)\s*[-–~至]\s*(\d+(?:\.5)?)\s*秒?\s*", str(value or ""))
     return f"{match.group(1)}-{match.group(2)}" if match else str(value or "").strip()
@@ -1293,7 +1479,7 @@ def check_space_sync(parsed: dict, char_names: dict, space_dir: Path,
                             f"（本段共 {len(rows)} 个镜头）")
                         continue
                     covered.add(idx)
-                    got = str(overlay.get("timecode", ""))
+                    got = overlay.get("timecode", "")
                     if got and _normalize_space_timecode(got) != want:
                         errors.append(
                             f"{label}: 站位增量 {shot_id} 的时间码 {got} "
@@ -1673,8 +1859,8 @@ def check_scene_plate(assets: list[dict], errors: list[str], warnings: list[str]
                 "车辆、人物与道具的在场和位置由片段绑定与站位承载」")
         if not realism_re.search(positive):
             warnings.append(
-                f"{code}: 场景图缺真实感锚——真人项目建议写「真实现场照片／35mm 胶片／"
-                "手机随手拍」，并低饱和、低对比、不锐化")
+                f"{code}: 场景图缺旧真实感锚词；应按项目画风合同核对媒介，"
+                "不要求添加真实现场照片、胶片或低饱和模板")
         for sentence in re.split(r"[。；\n]", positive):
             if not sentence.strip() or SCENE_SKIP.search(sentence):
                 continue
@@ -1687,10 +1873,9 @@ def check_scene_plate(assets: list[dict], errors: list[str], warnings: list[str]
             for oily in oily_re.finditer(sentence):
                 if is_negated(sentence, oily.start()):
                     continue
-                errors.append(
+                warnings.append(
                     f"{code}: 场景图正向句出现「{oily.group(0)}」——"
-                    "「油润/湿反光/镜面/硬边高光/金边/光晕/球差柔焦/油光/高光滚降」"
-                    "会把图推向 HDR 与塑料感；改成哑光材质、只有一条窄高光")
+                    "请对照项目画风与材质来源复核，不得自动改成纪实、哑光或窄高光")
                 break
             for match in movable_re.finditer(sentence):
                 if fixed_marker in sentence:
@@ -1708,14 +1893,8 @@ BEAUTY_DEFAULTS = {"beauty_pattern": r"细腻|通透|有光泽|丝光|水光|奶
 
 
 def check_beauty_words(assets: list[dict], episodes: list[dict], policy: dict,
-                       warnings: list[str]) -> None:
-    """美颜词＝磨皮打油，定提醒级而不是判错。
-
-    「细腻／通透／有光泽／丝光／水光／奶油光／唇面润」在中文里是褒义词，
-    模型却按字面执行：磨掉毛孔、把高光摊成一片，出来就是蜡像和塑料。
-    通透、润 在玻璃、玉石、漆面等材质上又是正当词，所以不硬拦，交评审处置。
-    《替身千金》E01 成片已实证：近景局部对比掉到 3.8，脸上只剩高光没有纹理。
-    """
+                       warnings: list[str], approved_terms: tuple | list = ()) -> None:
+    """Flag unreviewed surface terms without overriding approved project style."""
     pat = ((policy.get("prompt_layers") or {}).get("beauty_pattern")
            or BEAUTY_DEFAULTS["beauty_pattern"])
     beauty_re = re.compile(pat)
@@ -1733,6 +1912,8 @@ def check_beauty_words(assets: list[dict], episodes: list[dict], policy: dict,
         positive = re.split(r"负向限制[：:]|不要[：:]", text)[0]
         hits: list[str] = []
         for match in beauty_re.finditer(positive):
+            if any(match.group(0) in term for term in approved_terms):
+                continue
             before = positive[max(0, match.start() - 3):match.start()]
             if re.search(r"[不无禁避免防]", before):
                 continue
@@ -1740,9 +1921,8 @@ def check_beauty_words(assets: list[dict], episodes: list[dict], policy: dict,
         if hits:
             words = "、".join(dict.fromkeys(hits))
             warnings.append(
-                f"{label}: 出现美颜词「{words}」——模型会照字面磨皮、把高光摊成一片，"
-                "成图发蜡发油；改成「皮肤有颗粒感／哑光／只有一条窄高光」，"
-                "见 asset-image-production 的真实感锚")
+                f"{label}: 光色／肤质词「{words}」需对照项目画风与实际图复核；"
+                "用户指定的细腻、光泽和柔和高光不得自动改成颗粒感、哑光或窄高光")
 
 
 def check_character_style_consistency(assets: list[dict], warnings: list[str]) -> None:
@@ -1760,8 +1940,7 @@ def check_character_style_consistency(assets: list[dict], warnings: list[str]) -
         if not re.search(r"画风一致|同一画风|与视频同风格|真实感锚", prompt):
             warnings.append(
                 f"{asset['code']}: 角色卡没有声明「画风一致」——补一句「本图与视频同一画风："
-                "真人电影写实摄影、低饱和、低对比、哑光、可见毛孔与发丝；不是 CG／插画／时尚棚拍」，"
-                "否则模型只取脸、不取质感")
+                "项目确认的媒介、氛围、色彩、光照与纹理」，不得补通用写实模板")
 
 
 def check_character_ratio_consistency(assets: list[dict], warnings: list[str]) -> None:
@@ -1887,9 +2066,9 @@ def check_prompt_layers(parsed: dict, char_names: dict[str, str], policy: dict,
                     before = line[max(0, match.start() - 4):match.start()]
                     if re.search(r"[不无禁避免防]", before):
                         continue
-                    errors.append(
-                        f"{label}: 视频正文出现「{match.group(0)}」——真人项目材质哑光、"
-                        "高光柔和；硬亮线/湿反光/镜面反光会把画面推向 HDR 与塑料感")
+                    warnings.append(
+                        f"{label}: 视频正文出现「{match.group(0)}」——按项目画风合同和实际光源复核，"
+                        "不按词汇统一改成哑光、低饱和或窄高光")
                     break
             scene_hits, prop_hits = set(), set()
             for line in prompt.splitlines():
@@ -1964,6 +2143,16 @@ def validate(source: str, policy: dict, model: str | None = None,
     assets: list[dict] = parsed["assets"]
     episodes: list[dict] = parsed["episodes"]
     errors.extend(parsed["errors"])
+    warnings.extend(parsed.get("title_warnings", []))
+    # 控制字符(NUL 等)在 UTF-8 里合法但绝不该出现在提示词包里——多为文本处理
+    # 占位符残留或传输损坏;2026-11-14 E02 两处收尾被占位符吞词实证
+    ctrl_spots = re.findall(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", source)
+    if ctrl_spots:
+        errors.append(
+            f"包内含 {len(ctrl_spots)} 个控制字符(NUL 等)——占位符残留或传输损坏,"
+            "先清洗再导出；含 NUL 的包会在应用导入端整包拒绝（CTRL-CHAR）")
+    style_stats = check_style(parsed, source_file)
+    errors.extend(style_stats["errors"])
     reusable_codes: set[str] = set()
     if baseline:
         base_parsed = parse_structure(baseline)
@@ -1982,7 +2171,7 @@ def validate(source: str, policy: dict, model: str | None = None,
                     errors.append(f"声线锁定跨片段不一致：{name} 的锚点出现两种写法（母版只能维护一处，全量派生）")
                 voice_map[name] = desc
     check_scene_plate(assets, errors, warnings, policy)
-    check_beauty_words(assets, episodes, policy, warnings)
+    check_beauty_words(assets, episodes, policy, warnings, style_stats.get("approved_terms", ()))
     check_video_outfit_restatement(episodes, warnings)
     check_character_ratio_consistency(assets, warnings)
     check_character_style_consistency(assets, warnings)
@@ -2239,6 +2428,7 @@ def validate(source: str, policy: dict, model: str | None = None,
             extra = f"（本包 {risky} 个多人同框镜头）" if risky else ""
             warnings.append(f"站位层：已按输入单登记豁免，跳过站位交叉校验{extra}")
     return {"ok": not errors, "episodes": len(episodes), "segments": len(stats),
+            "style": style_stats,
             "identity": identity_stats,
             "assets": len(assets), "import_request_bytes": request_bytes,
             "stats": stats, "space": space_stats, "outfit": outfit_stats,
@@ -2268,6 +2458,7 @@ def main() -> int:
                         help="站位增量目录（E28/W18）。缺省时按制作包同级 "
                              "内部/04b-站位图 自动查找；找不到则跳过站位交叉校验")
     parser.add_argument("--json", action="store_true", help="输出 JSON 结果")
+    parser.add_argument("--delivery", action="store_true", help="最终导出：同时核验逐项画风人工验收范围、引文及版本")
     args = parser.parse_args()
     try:
         source = args.file.read_text(encoding="utf-8")
@@ -2314,6 +2505,9 @@ def main() -> int:
                           space_dir=space_dir,
                           space_exempt=space_exempted(args.file),
                           source_file=args.file.resolve())
+        if args.delivery:
+            result["errors"].extend(check_style_review(parse_structure(source), args.file.resolve()))
+            result["ok"] = not result["errors"]
     except (OSError, UnicodeError, ValueError, KeyError, TypeError) as exc:
         print(f"无法校验文件：{exc}", file=sys.stderr)
         return 2
