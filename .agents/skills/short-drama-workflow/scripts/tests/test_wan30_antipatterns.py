@@ -46,7 +46,7 @@ def make_pkg(rows: str, public: str = "统一冷灰光影，真人实拍电影�
 CLEAN_ROWS = "\n".join(
     [
         "0-10秒，镜头：中景，侧45°机位，手持轻晃。画面：阿泽伸手抓起绳头，转身把绳头甩上肩；苏晚抬手按住被风吹起的纸角。全员不看镜头，视线落在远处路牌。",
-        "10-20秒，硬切。镜头：近景，右后方45°。画面：老杨蹲下，把绳头一圈圈收进掌心；小林退开半步，抬手擦掉额头的汗。全员不看镜头。",
+        "10-20秒，硬切。镜头：近景，右后方45°，焦点锁定老杨收绳的掌心。画面：老杨蹲下，把绳头一圈圈收进掌心；小林退开半步，抬手擦掉额头的汗。全员不看镜头。",
         "20-30秒，硬切。镜头：全景，侧45°。画面：三个人错位站在车头两侧，阿泽弯腰抹轮眉，苏晚翻笔记本，老杨收绳，另两人留在画外只给肩线。全员不看镜头。",
     ]
 )
@@ -80,6 +80,36 @@ class Wan30AntiPatternTests(unittest.TestCase):
             "0-3秒，镜头：近景，阿泽侧前方平视，向前短推。阿泽眼神骤然失去焦点，唇线绷紧。全员不看镜头。")
         self.assertEqual(result["errors"], 0, result["issues"])
         self.assertEqual(result["warnings"], 0, result["issues"])
+
+    def test_inner_monologue_without_emotion_is_warning(self):
+        """2026-11-14 用户指令：心声必须带角色情绪，纯语速/旁白解读要警告。"""
+        result = self._audit(
+            "0-4秒，镜头：特写，焦点锁定他的脸。他盯着门口，喉结滚动。心声：阿泽（心理独白，无口型，慢而轻）\"I remember.\" 原语朗读估时：1.5秒。镜尾：他别开眼。")
+        kinds = {i["kind"] for i in result["issues"]}
+        self.assertIn("utterance_tone_missing", kinds)
+        self.assertNotIn("expression_missing", kinds)  # 正文有「喉结滚动」
+
+    def test_inner_monologue_with_emotion_and_expression_passes(self):
+        result = self._audit(
+            "0-4秒，镜头：特写，焦点锁定他的脸。他盯着门口，喉结滚动。心声：阿泽（心理独白，无口型，压着后怕，低声慢沉）\"I remember.\" 原语朗读估时：1.5秒。镜尾：他别开眼。")
+        kinds = {i["kind"] for i in result["issues"]}
+        self.assertNotIn("utterance_tone_missing", kinds, result["issues"])
+        self.assertNotIn("expression_missing", kinds)
+
+    def test_speaking_row_without_expression_cue_is_warning(self):
+        """2026-11-14 用户指令：说话行正文须有表情锚点；括号内语气词不算锚点。"""
+        result = self._audit(
+            "0-4秒，镜头：中景，焦点落在两人之间的桌面上。阿泽把手杯放稳。对白：阿泽（口型对白，正视前方，低声沉稳）\"Fine.\" 原语朗读估时：1.0秒。镜尾：杯子停在桌角。")
+        kinds = {i["kind"] for i in result["issues"]}
+        self.assertIn("expression_missing", kinds)
+        self.assertNotIn("utterance_tone_missing", kinds)  # 括号有「低声沉稳」
+
+    def test_speaking_row_expression_in_body_passes(self):
+        result = self._audit(
+            "0-4秒，镜头：中景，焦点锁定阿泽的脸。阿泽把杯子放稳，眉头松开半拍。对白：阿泽（口型对白，正视前方，低声沉稳）\"Fine.\" 原语朗读估时：1.0秒。镜尾：杯子停在桌角。")
+        kinds = {i["kind"] for i in result["issues"]}
+        self.assertNotIn("expression_missing", kinds, result["issues"])
+        self.assertNotIn("utterance_tone_missing", kinds, result["issues"])
 
     def test_blocking_term_is_error(self):
         result = self._audit(CLEAN_ROWS.replace("三个人错位站在车头两侧", "五人并肩站在车头前", 1))

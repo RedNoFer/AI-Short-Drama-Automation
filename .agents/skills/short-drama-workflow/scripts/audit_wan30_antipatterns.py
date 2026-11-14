@@ -41,6 +41,12 @@ PROMPT = re.compile(r"#### 视频提示词\n\n```text\n([\s\S]*?)\n```")
 ROW = re.compile(r"^(\d+(?:\.5)?)-(\d+(?:\.5)?)秒[，,](.*)$")
 SHOT = re.compile(r"(大远景|远景|全景|中近景|中景|近景|大特写|特写|微距)")
 CAMERA_PREFIX = re.compile(r"^(?:硬切[，,。]\s*)?镜头[：:]")
+UTTERANCE_TONE = re.compile(r"语气|语速|语调|低声|轻声|压低|压着|放缓|放软|一字一顿|带笑|含笑|沙哑|发哑|清亮|颤|平静|冷淡|急促|平直|上扬|下沉|收紧|发紧|吼|喊|细声|高声|轻快|沉稳|自若|哽|惊呼|发问|追问|试探|调侃|打趣|客套|坦率|坦白|承认|否认|应允|命令|告解|搭腔|提醒|抱怨|回击|告白|低问|扬声|笃定|迟疑|愣|憋|讥|倨傲|哀|敬|松|绷|吐|劈叉|气声|郑重|尴尬|懵|困惑|随意|市井腔|自嘲|交错|递进|落低|耳语|低哑|发飘|发懵|灼热|宽慰|顶格|坦然|狂喜|咬着牙|讥诮|怀疑")
+FOCUS_SHOTS = ("特写", "大特写", "近景", "中近景")
+# 心声须带角色情绪（2026-11-14 用户指令）：在语气词表之上补情绪词；只差语速描述的心声仍会命中警告
+INNER_TONE = re.compile(UTTERANCE_TONE.pattern + "|痛|怕|慌|惧|羞|酸|悔|愧|不安|失神|怔|委屈|不舍|心动|暖")
+# 说话行正文表情锚点（背影/画外豁免在检查处判断）
+EXPRESSION_CUE = re.compile(r"眉|眼|目光|视线|嘴角|唇|瞳|喉结|呼吸|表情|笑|愣|怔|咬|抿|睫毛|指节|下颌|耳根|颊|皱|绷|僵|喘|惊|瞪|倒吸|吸气|屏|抖|缩|避|发热|发白|变色")
 DECLARED_DIALOGUE_DURATION = re.compile(
     r"(?:对白(?:时长)?|原语朗读估时)\s*[：:]?\s*(\d+(?:\.\d+)?)\s*秒"
 )
@@ -251,10 +257,16 @@ def bind_and_review_issues(issues: list[dict], segments: list[dict], cfg: dict,
 def audit(package: Path, policy_path: Path | None, review_record_path: Path | None = None) -> dict:
     text = package.read_text(encoding="utf-8")
     # 角色名从包资产头派生（### 角色 CHAR_xx｜姓名）；跨项目硬编码名单只作兜底。
-    derived_chars = tuple(dict.fromkeys(
+    # 正文行内常用短名（"Luke端着水杯"），故同时派生首个空格前的短名，
+    # 否则含人镜被误判为空镜/静物（北美版 E04-E10 实机：empty_shot_too_long 系统性误报）。
+    derived_full = tuple(dict.fromkeys(
         m.group(1).strip() for m in re.finditer(r"^### 角色 CHAR_[A-Za-z0-9]+｜(.+?)\s*$", text, re.M)
     ))
-    chars = derived_chars + CHARS if derived_chars else CHARS
+    derived_first = tuple(dict.fromkeys(
+        re.split(r"[（(\s]", n, maxsplit=1)[0] for n in derived_full
+        if len(re.split(r"[（(\s]", n, maxsplit=1)[0]) >= 2
+    ))
+    chars = derived_full + derived_first + CHARS if derived_full else CHARS
     policy = {}
     if policy_path and policy_path.exists():
         policy = json.loads(policy_path.read_text(encoding="utf-8"))
@@ -317,7 +329,7 @@ def audit(package: Path, policy_path: Path | None, review_record_path: Path | No
                     }
                 )
                 break
-        has_char = any(c in prompt for c in chars)
+        has_char = any(c in prompt for c in CHARS)
         if has_char and not any(x in prompt for x in ("不看镜头", "不朝镜头", "视线避开镜头")):
             no_gaze += 1
             issues.append(
@@ -387,6 +399,41 @@ def audit(package: Path, policy_path: Path | None, review_record_path: Path | No
 
             if not CAMERA_PREFIX.match(body):
                 camera_missing += 1
+            if any(t in body for t in FOCUS_SHOTS) and "焦点" not in body and "全景深" not in body:
+                issues.append(
+                    {
+                        "level": "warning",
+                        "kind": "focus_missing",
+                        "segment": label,
+                        "detail": f"{start:g}-{end:g}秒：浅景深景别未写焦点落点/全景深",
+                    }
+                )
+            # 2026-11-14 用户指令:心声与对白同责,必须带角色情绪;真旁白(画外旁白/混叠人声)豁免
+            if (re.search(r"(?:对白|心声)[：:]", body)
+                    and not re.search(r"画外旁白|混叠人声", body)
+                    and not INNER_TONE.search(body)):
+                issues.append(
+                    {
+                        "level": "warning",
+                        "kind": "utterance_tone_missing",
+                        "segment": label,
+                        "detail": f"{start:g}-{end:g}秒：对白/心声行缺语气/情绪描述（心声不是旁白，须带角色情绪）",
+                    }
+                )
+            # 2026-11-14 用户指令:表情到位——说话行正文须有表情/微表情锚点(背影/画外豁免;括号内语气词不算锚点)
+            if (re.search(r"(?:对白|心声)[：:]", body)
+                    and not re.search(r"画外旁白|混叠人声", body)
+                    and not re.search(r"背影|画外|只闻", body)
+                    and not EXPRESSION_CUE.search(
+                        re.sub(r"（[^）]*）", "", body.split("原语朗读估时")[0]))):
+                issues.append(
+                    {
+                        "level": "warning",
+                        "kind": "expression_missing",
+                        "segment": label,
+                        "detail": f"{start:g}-{end:g}秒：说话行正文缺表情/微表情锚点",
+                    }
+                )
             shot = SHOT.search(body)
             if shot:
                 pos = shot.start() / max(len(body), 1)
